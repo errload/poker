@@ -1,0 +1,325 @@
+@import url('https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap');
+
+* {
+    margin: 0;
+    padding: 0;
+    font-family: "Ubuntu", sans-serif;
+    font-weight: 400;
+    font-style: normal;
+    font-size: 16px;
+}
+
+.br { border: 1px solid red; }
+
+/* #################################################### */
+
+.line {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    padding: 10px;
+    margin: 0 auto;
+    margin-top: 10px;
+    width: 700px;
+    border: 1px solid #939393;
+    background: #f6f6f6;
+    border-radius: 3px;
+}
+
+/* #################################################### */
+
+.line_caption { font-weight: bold; }
+
+.line_content {
+    display: flex;
+    align-items: center;
+}
+
+.radio {
+    margin-left: 10px;
+    cursor: pointer;
+    outline: none;
+}
+
+label {
+    margin-left: 3px;
+    cursor: pointer;
+}
+
+.select_kick {
+    width: 100px !important;
+    margin-left: 50px;
+}
+
+.clear {
+    cursor: pointer;
+    top: 110px;
+    border: 1px solid #939393;
+    outline: none;
+    padding: 3px 20px;
+    border-radius: 3px;
+}
+
+.clear { right: 220px; }
+.clear:hover, .write:hover { background: #e7e6e6; }
+.clear:active, .write:active { box-shadow: inset 0 0 5px rgb(0 0 0 / .5); }
+
+.button.clear {
+    position: inherit !important;
+    padding: 3px 20px;
+}
+
+/* #################################################### */
+
+.slots {
+    display: flex;
+    flex-direction: row;
+    padding: 1px 0;
+    margin: 0 auto;
+    margin-top: 3px;
+    width: 700px;
+}
+
+.slots:first-child { margin-top: 10px; }
+.slot:first-child { margin-left: 0; }
+
+.slot {
+    width: 49px;
+    height: 50px;
+    margin-left: 5px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    color: #ffffff;
+    font-weight: bold;
+    font-size: 18px;
+    border-radius: 3px;
+}
+
+.blue { background: #3770b1; }
+.blue:hover { background: #2f629a; }
+.green { background: #228B22; }
+.green:hover { background: #217c21; }
+.black { background: #232323; }
+.black:hover { background: #000000; }
+.red { background: #B22222; }
+.red:hover { background: #9b1e1e; }
+.blue:active, .green:active, .black:active, .red:active { box-shadow: inset 0 0 5px rgb(0 0 0 / .5); }
+
+/* #################################################### */
+
+.board {
+    padding: 10px;
+    border: 1px solid #939393;
+    background: #f6f6f6;
+    border-radius: 300px;
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    height: 400px;
+    position: relative;
+    width: 600px;
+    margin: 0 auto;
+    margin-top: 35px;
+}
+
+.board_slot {
+    width: 38px;
+    height: 50px;
+    margin-left: 5px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: #ffffff;
+    font-weight: bold;
+    font-size: 18px;
+    border-radius: 3px;
+}
+
+.board_slot:first-child {
+    margin-left: 0;
+}
+
+/* #################################################### */
+
+.player {
+    width: 160px;
+    display: flex;
+    flex-direction: column;
+    padding: 5px;
+    border: 1px solid #939393;
+    border-radius: 3px;
+    position: absolute;
+    background: #f6f6f6;
+}
+
+.player_caption {
+    display: flex;
+    flex-direction: row;
+}
+
+.player_radio {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-left: 0;
+}
+
+.player_radio .radio {
+    margin-left: 0;
+    outline: none;
+}
+
+.select {
+    outline: none;
+    height: 30px;
+    cursor: pointer;
+    width: 100%;
+    padding: 3px;
+    margin-right: 5px;
+}
+
+.player_buttons {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.button {
+    font-weight: bold;
+    outline: none;
+    margin-left: 0;
+    color: #ffffff;
+    font-size: 14px;
+    border-radius: 3px;
+    width: 26px;
+    height: 30px;
+    border: 0;
+}
+
+.button:first-child { margin-left: 0; }
+.button:active { box-shadow: inset 0 0 5px rgb(0 0 0 / .5); }
+
+.fold { background: #B22222; }
+.fold:hover { background: #9b1e1e; }
+.call { background: #3770b1; }
+.call:hover { background: #2f629a; }
+.raise { background: #228B22; }
+.raise:hover { background: #217c21; }
+.check { background: #5e5e5e; }
+.check:hover { background: #4d4c4c; }
+.all-in { background: #ea944e; }
+.all-in:hover { background: #d98745; }
+
+.player1 { bottom: -20px; }
+.player7 { right: -20px; }
+.player5 { top: -25px; }
+.player3 { left: -20px; }
+
+.player2 {
+    bottom: -5px;
+    left: 35px;
+}
+
+.player8 {
+    bottom: -5px;
+    right: 35px;
+}
+
+.player6 {
+    top: -5px;
+    right: 35px;
+}
+
+.player4 {
+    top: -5px;
+    left: 35px;
+}
+
+.stack_cards {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 10px;
+}
+
+.stack_cards .slot {
+    width: 40px;
+    height: 30px;
+    margin-left: 2px;
+    cursor: auto;
+}
+
+.player_radio label { margin-left: 0; }
+
+/* #################################################### */
+
+.line_result_wrapper {
+    margin-top: 20px;
+}
+
+.gto, .write {
+    position: absolute;
+    cursor: pointer;
+    top: 110px;
+    border: 1px solid #939393;
+    outline: none;
+    padding: 8px 20px;
+    border-radius: 3px;
+}
+
+.write { left: 220px; }
+.gto { right: 220px; }
+.gto:hover, .write:hover { background: #e7e6e6; }
+.gto:active, .write:active { box-shadow: inset 0 0 5px rgb(0 0 0 / .5); }
+
+/* #################################################### */
+
+.popup-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0,0,0,0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+}
+
+.popup-window {
+    background: white;
+    border-radius: 3px;
+    padding: 20px 30px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    max-width: 510px;
+    min-width: 300px;
+    text-align: center;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.bid_raise {
+    width: 50px;
+    height: 50px;
+    margin: 3px;
+    padding: 3px 8px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #2f629a;
+    border-radius: 3px;
+    cursor: pointer;
+    font-weight: bold;
+    background: #3770b1;
+    color: #ffffff;
+}
