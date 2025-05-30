@@ -47,8 +47,13 @@ try {
 			$stmt = $pdo->prepare("SELECT COUNT(*) FROM players WHERE player_id = ?");
 			$stmt->execute([$player['player_id']]);
 			if (!$stmt->fetchColumn()) {
+				// Получаем первую цифру ID игрока
+				$firstDigit = substr($player['player_id'], 0, 1);
+				// Если первая цифра не число, используем 0
+				$firstDigit = is_numeric($firstDigit) ? $firstDigit : '0';
+
 				$pdo->prepare("INSERT INTO players (player_id, nickname) VALUES (?, ?)")
-					->execute([$player['player_id'], 'Player_' . $player['player_id']]);
+					->execute([$player['player_id'], 'Player' . $firstDigit]);
 			}
 
 			// Вставляем или обновляем showdown
@@ -92,7 +97,6 @@ try {
 	}
 
 } catch (Exception $e) {
-	http_response_code(400);
 	echo json_encode([
 		'success' => false,
 		'error' => $e->getMessage()

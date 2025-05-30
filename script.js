@@ -94,6 +94,33 @@ document
 	.querySelectorAll('.player_radio .radio')
 	.forEach(radio => {
 		radio.addEventListener('change', async function () {
+			let players = []
+
+			document
+				.querySelectorAll('.player')
+				.forEach(elem => {
+					if (elem.querySelectorAll('.slot')[0].textContent && elem.querySelectorAll('.slot')[1].textContent) {
+						let cards = ''
+						let player_id = parseInt(elem.querySelector('.radio').value)
+						if (player_id === 111) return
+
+						cards += elem.querySelectorAll('.slot')[0].textContent
+						cards += elem.querySelectorAll('.slot')[0].dataset.card
+						cards += elem.querySelectorAll('.slot')[1].textContent
+						cards += elem.querySelectorAll('.slot')[1].dataset.card
+
+						players.push({
+							player_id: elem.querySelector('.radio').value,
+							cards: cards
+						})
+					}
+				})
+
+			const howdown = await sendAjax('/4bet/api/showdown_handler.php', {
+				'hand_id': hand_id,
+				'players': players
+			})
+
 			let radio_ID = parseInt(this.getAttribute('data-id'))
 			hand_id = null
 			bid_counter = 1
@@ -125,6 +152,7 @@ document
 				.forEach(elem => {
 					elem.style.border = '1px solid #939393'
 				})
+
 			document
 				.querySelector(`.player.player${radio_ID}`)
 				.style.border = '3px solid #228B22'
@@ -486,53 +514,53 @@ document
 	})
 
 // click write
-document
-	.querySelector('.write')
-	.addEventListener('click', async function () {
-
-		const handId = 2; // ID раздачи
-		// const players = [
-		// 	{ player_id: 111, cards: 'AhKh' }, // Герой
-		// 	{ player_id: 333, cards: 'QcQd' }, // Оппонент 1
-		// ];
-
-		try {
-			const response = await fetch('/4bet/api/showdown_handler.php', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify({
-					"hand_id": handId,
-					"players": [
-						{
-							"player_id": 1,
-							"cards": "Ah9h"
-						},
-						{
-							"player_id": 2,
-							"cards": "QcQd"
-						}
-					]
-				})
-			});
-
-			const result = await response.json();
-
-			if (!result.success) {
-				console.error('Showdown error:', result.error);
-				return false;
-			}
-
-			console.log('Showdown recorded:', result.message);
-			return true;
-
-		} catch (error) {
-			console.error('Network error:', error);
-			return false;
-		}
-
-	})
+// document
+// 	.querySelector('.write')
+// 	.addEventListener('click', async function () {
+//
+// 		const handId = 2; // ID раздачи
+// 		// const players = [
+// 		// 	{ player_id: 111, cards: 'AhKh' }, // Герой
+// 		// 	{ player_id: 333, cards: 'QcQd' }, // Оппонент 1
+// 		// ];
+//
+// 		try {
+// 			const response = await fetch('/4bet/api/showdown_handler.php', {
+// 				method: 'POST',
+// 				headers: {
+// 					'Content-Type': 'application/json',
+// 				},
+// 				body: JSON.stringify({
+// 					"hand_id": handId,
+// 					"players": [
+// 						{
+// 							"player_id": 1,
+// 							"cards": "Ah9h"
+// 						},
+// 						{
+// 							"player_id": 2,
+// 							"cards": "QcQd"
+// 						}
+// 					]
+// 				})
+// 			});
+//
+// 			const result = await response.json();
+//
+// 			if (!result.success) {
+// 				console.error('Showdown error:', result.error);
+// 				return false;
+// 			}
+//
+// 			console.log('Showdown recorded:', result.message);
+// 			return true;
+//
+// 		} catch (error) {
+// 			console.error('Network error:', error);
+// 			return false;
+// 		}
+//
+// 	})
 
 // click gto
 document
