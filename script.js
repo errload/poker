@@ -1,4 +1,5 @@
-const positions = ['BTN', 'SB', 'BB', 'UTG', 'UTG1', 'LJ', 'HJ', 'CO']
+const positions = ['BTN', 'SB', 'BB', 'UTG', 'UTG+1', 'MP', 'HJ', 'CO']
+let hand_id = null
 let bid_counter = 2.2
 
 // remove class list
@@ -80,18 +81,14 @@ document
 	.forEach(radio => {
 		radio.addEventListener('change', async function () {
 			let radio_ID = parseInt(this.getAttribute('data-id'))
+			hand_id = null
 			bid_counter = 0
 
 			positions.forEach((value, key) => {
 				const player = document.querySelector(`.player.player${radio_ID}`)
 
-				// меняем позиции
 				player.querySelector('.player_position').textContent = value
-
-				// отображаем игроков
 				player.querySelector('.player_buttons').style.display = 'flex'
-
-				// чистим карты
 				player
 					.querySelectorAll('.stack_cards .slot')
 					.forEach(elem => {
@@ -110,35 +107,18 @@ document
 					removeClassCards(elem)
 				})
 
-			// новая раздача
-			try {
-				const response = await fetch('/4bet/api/new_hand_mysql.php', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json'
-					},
-					body: JSON.stringify({
-						"hero_position": "BTN",
-						"hero_stack": 50.5,
-						"stacks": {
-							"player_1": 48.0,
-							"player_2": 52.5
-						},
-						"hero_cards": "AhKh"
-					})
-				});
+			const result = await sendAjax('/4bet/api/new_hand_mysql.php', {
+				hero_position: document.querySelector('.player1 .player_position').textContent,
+				hero_stack: document.querySelector('.player1 .select_stack').value,
+				stacks: {
+					player1: 48.0,
+					player2: 52.5
+				},
+				hero_cards: null
+			})
 
-				const data = await response.json();
-
-				if (data.success) {
-					console.log('Новая раздача создана! ID:', data.hand_id);
-					sessionStorage.setItem('hand_id', data.hand_id);
-				} else {
-					console.error('Ошибка:', data.error);
-				}
-			} catch (error) {
-				console.error('Network error:', error);
-			}
+			hand_id = result.hand_id
+			console.log(result)
 		})
 	})
 
@@ -226,7 +206,7 @@ document
 			removeClassCards(player.querySelectorAll('.stack_cards .slot')[1])
 
 			const result = await sendAjax('/4bet/api/action_handler.php', {
-				'hand_id': sessionStorage.getItem('hand_id'),
+				'hand_id': hand_id,
 				'player_id': player.querySelector('.radio').value,
 				"street": 'preflop',
 				'action_type': 'fold',

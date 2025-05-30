@@ -49,19 +49,24 @@ try {
 			exit;
 		}
 
-		// Проверяем существование игрока
+		// Проверяем существование игрока и создаем нового, если не существует
 		$player_id = $input['player_id'];
 		$stmt = $pdo->prepare("SELECT 1 FROM players WHERE player_id = ?");
 		$stmt->execute([$player_id]);
 
 		if (!$stmt->fetch()) {
-			$pdo->commit();
-			echo json_encode([
-				'success' => true,
-				'message' => "Player with ID {$player_id} not found, action not recorded",
-				'player_id' => $player_id
-			]);
-			exit;
+			// Извлекаем первую цифру из ID игрока
+			$firstDigit = substr((string)$player_id, 0, 1);
+			if (!is_numeric($firstDigit)) {
+				$firstDigit = '0'; // Если ID не начинается с цифры
+			}
+
+			// Создаем нового игрока с именем в формате PlayerX
+			$stmt = $pdo->prepare("
+                INSERT INTO players (player_id, nickname, last_seen, created_at) 
+                VALUES (?, CONCAT('Player', ?), NOW(), NOW())
+            ");
+			$stmt->execute([$player_id, $firstDigit]);
 		}
 
 		// Получаем следующий sequence_num
@@ -154,7 +159,7 @@ function updatePlayerStats($pdo, $player_id, $current_action, $current_street, $
 	$stmt->execute([$player_id]);
 	$player = $stmt->fetch();
 
-	// Если игрок не существует, просто выходим
+	// Если игрок не существует (хотя мы его создали ранее), просто выходим
 	if (!$player) {
 		return;
 	}
