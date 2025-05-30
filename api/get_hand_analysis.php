@@ -18,7 +18,13 @@ try {
 		}
 	}
 
-	// Создаем подключение к БД только после проверки входных данных
+	// Проверяем последовательность улиц
+	$validStreets = ['preflop', 'flop', 'turn', 'river'];
+	if (!in_array($input['current_street'], $validStreets)) {
+		throw new Exception("Invalid street: " . $input['current_street']);
+	}
+
+	// Создаем подключение к БД
 	$pdo = new PDO(
 		"mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4",
 		DB_USER,
@@ -29,193 +35,181 @@ try {
 		]
 	);
 
-	// 1. Получаем информацию о текущей раздаче
+	// 1. Получаем основную информацию о раздаче
 	$handStmt = $pdo->prepare("
         SELECT hero_position, hero_stack, hero_cards, board, is_completed, stacks 
         FROM hands 
         WHERE hand_id = ?
     ");
-	if (!$handStmt->execute([$input['hand_id']])) {
-		throw new Exception("Failed to execute hand query");
-	}
+	$handStmt->execute([$input['hand_id']]);
 	$handData = $handStmt->fetch();
-	if (!$handData) {
-		throw new Exception("Hand not found");
-	}
+	if (!$handData) throw new Exception("Hand not found");
 
-	// 2. Получаем активных игроков с их последним стеком
+	// 2. Получаем активных игроков и их последние действия
 	$playersStmt = $pdo->prepare("
         SELECT 
-            p.player_id, p.nickname, p.vpip, p.pfr, p.af, p.afq, p.three_bet, 
-            p.wtsd, p.wsd, p.hands_played,
-            a.current_stack,
-            a.action_type as last_action
+            p.player_id, p.nickname, 
+            ROUND(p.vpip,1) as vpip, ROUND(p.pfr,1) as pfr, 
+            ROUND(p.af,1) as af, ROUND(p.three_bet,1) as three_bet,
+            a.current_stack, a.action_type as last_action
         FROM players p
-        JOIN (
-            SELECT 
-                player_id, 
-                MAX(sequence_num) as last_seq
-            FROM actions
-            WHERE hand_id = ?
-            AND action_type != 'fold'
-            GROUP BY player_id
-        ) last ON p.player_id = last.player_id
-        JOIN actions a ON a.hand_id = ? AND a.player_id = p.player_id AND a.sequence_num = last.last_seq
-        ORDER BY a.sequence_num ASC
+        JOIN actions a ON a.hand_id = ? AND a.player_id = p.player_id
+        WHERE a.sequence_num = (
+            SELECT MAX(sequence_num) 
+            FROM actions 
+            WHERE hand_id = ? AND player_id = p.player_id AND action_type != 'fold'
+        )
+        ORDER BY a.sequence_num
     ");
-	if (!$playersStmt->execute([$input['hand_id'], $input['hand_id']])) {
-		throw new Exception("Failed to execute players query");
-	}
+	$playersStmt->execute([$input['hand_id'], $input['hand_id']]);
 	$players = $playersStmt->fetchAll();
 
-	// 3. Для каждого игрока получаем историю последних 20 сыгранных рук
-	foreach ($players as &$player) {
-		$historyStmt = $pdo->prepare("
-            SELECT 
-                h.hand_id,
-                h.hero_position as position,
-                h.hero_cards,
-                h.board,
-                h.is_completed,
-                GROUP_CONCAT(
-                    CONCAT(a.street, ':', a.action_type, ':', IFNULL(a.amount, 0))
-                    ORDER BY a.sequence_num SEPARATOR '|'
-                ) AS actions
-            FROM hands h
-            JOIN actions a ON h.hand_id = a.hand_id AND a.player_id = ?
-            WHERE h.is_completed = 1
-            AND h.hand_id != ?
-            GROUP BY h.hand_id
-            ORDER BY h.hand_id DESC
-            LIMIT 20
-        ");
-		$historyStmt->execute([$player['player_id'], $input['hand_id']]);
-		$playerHistory = $historyStmt->fetchAll();
-
-		$player['history'] = array_map(function($hand) {
-			return [
-				'hand_id' => $hand['hand_id'],
-				'position' => $hand['position'],
-				'cards' => $hand['hero_cards'],
-				'board' => $hand['board'],
-				'actions' => array_map(function($action) {
-					$parts = explode(':', $action);
-					return [
-						'street' => $parts[0],
-						'type' => $parts[1],
-						'amount' => $parts[2] ? (float)$parts[2] : null
-					];
-				}, explode('|', $hand['actions']))
-			];
-		}, $playerHistory);
-	}
-	unset($player);
-
-	// 4. Получаем историю действий текущей раздачи
+	// 3. Получаем историю действий текущей раздачи с расчетом банка
 	$actionsStmt = $pdo->prepare("
-        SELECT a.street, a.action_type, a.amount, a.sequence_num,
-               p.player_id, p.nickname
+        SELECT 
+            a.street, 
+            SUBSTRING(a.action_type, 1, 1) as act,
+            a.amount,
+            p.player_id,
+            p.nickname,
+            a.sequence_num
         FROM actions a
         JOIN players p ON a.player_id = p.player_id
         WHERE a.hand_id = ?
         ORDER BY a.sequence_num
     ");
-	if (!$actionsStmt->execute([$input['hand_id']])) {
-		throw new Exception("Failed to execute actions query");
-	}
-	$actionHistory = $actionsStmt->fetchAll();
+	$actionsStmt->execute([$input['hand_id']]);
+	$actions = $actionsStmt->fetchAll();
 
-	// 5. Получаем информацию о showdown (если есть)
-	$showdownStmt = $pdo->prepare("
-        SELECT s.player_id, s.cards, p.nickname
-        FROM showdowns s
-        JOIN players p ON s.player_id = p.player_id
-        WHERE s.hand_id = ?
-    ");
-	if (!$showdownStmt->execute([$input['hand_id']])) {
-		throw new Exception("Failed to execute showdown query");
-	}
-	$showdownData = $showdownStmt->fetchAll();
+	// Рассчитываем банк для каждой улицы
+	$streetPots = [
+		'preflop' => 0,
+		'flop' => 0,
+		'turn' => 0,
+		'river' => 0
+	];
+	$currentPot = 0;
+	$actionHistory = [];
 
-	// Формируем данные для ИИ
+	foreach ($actions as $action) {
+		if ($action['amount'] > 0) {
+			$currentPot += $action['amount'];
+		}
+		$streetPots[$action['street']] = $currentPot;
+
+		$actionHistory[] = [
+			's' => substr($action['street'], 0, 1), // street
+			'p' => (int)$action['player_id'], // player_id
+			'a' => $action['act'], // action type
+			'v' => $action['amount'] ? round($action['amount'], 1) : null, // value
+			'r' => $action['amount'] ? round($action['amount'] / $currentPot, 2) : null // ratio to pot
+		];
+	}
+
+	// 4. Получаем сокращенную историю последних 5 рук для каждого игрока
+	foreach ($players as &$player) {
+		$historyStmt = $pdo->prepare("
+            SELECT 
+                h.hand_id,
+                h.hero_position as pos,
+                h.hero_cards as cards,
+                (
+                    SELECT GROUP_CONCAT(
+                        CONCAT(
+                            SUBSTRING(a.street, 1, 1), ':', 
+                            SUBSTRING(a.action_type, 1, 1), ':',
+                            IFNULL(a.amount, 0)
+                        ) 
+                        ORDER BY a.sequence_num SEPARATOR '|'
+                    )
+                    FROM actions a 
+                    WHERE a.hand_id = h.hand_id AND a.player_id = ?
+                ) as acts
+            FROM hands h
+            WHERE h.is_completed = 1
+            AND h.hand_id != ?
+            AND EXISTS (
+                SELECT 1 FROM actions a 
+                WHERE a.hand_id = h.hand_id AND a.player_id = ?
+            )
+            ORDER BY h.hand_id DESC
+            LIMIT 5
+        ");
+		$historyStmt->execute([$player['player_id'], $input['hand_id'], $player['player_id']]);
+		$player['hist'] = $historyStmt->fetchAll();
+	}
+	unset($player);
+
+	// 5. Формируем компактные данные для ИИ
 	$analysisData = [
-		'hand_id' => (int)$input['hand_id'],
-		'current_street' => $input['current_street'],
+		'id' => (int)$input['hand_id'],
+		'street' => substr($input['current_street'], 0, 1),
 		'hero' => [
-			'position' => $handData['hero_position'],
+			'pos' => $handData['hero_position'],
 			'stack' => round($handData['hero_stack'], 1),
 			'cards' => $handData['hero_cards']
 		],
 		'board' => $handData['board'],
-		'players' => array_map(function($player) {
-			$playerData = [
-				'id' => (int)$player['player_id'],
-				'nickname' => $player['nickname'],
-				'stack' => round($player['current_stack'], 1),
+		'pot' => $streetPots,
+		'players' => array_map(function($p) {
+			return [
+				'id' => (int)$p['player_id'],
+				'name' => $p['nickname'],
+				'stack' => round($p['current_stack'], 1),
 				'stats' => [
-					'vpip' => round($player['vpip'], 1),
-					'pfr' => round($player['pfr'], 1),
-					'af' => round($player['af'], 1),
-					'afq' => round($player['afq'], 1),
-					'three_bet' => round($player['three_bet'], 1)
+					'vpip' => $p['vpip'],
+					'pfr' => $p['pfr'],
+					'af' => $p['af'],
+					'3b' => $p['three_bet']
 				],
-				'history' => array_map(function($history) {
-					return [
-						'hand_id' => (int)$history['hand_id'],
-						'position' => $history['position'],
-						'cards' => $history['cards'],
-						'board' => $history['board'],
-						'actions' => array_map(function($action) {
-							return [
-								'street' => substr($action['street'], 0, 1),
-								'type' => substr($action['type'], 0, 1),
-								'amount' => $action['amount'] ? round($action['amount'], 1) : null
+				'last' => $p['last_action'][0] ?? 'f', // last action first letter
+				'hist' => array_map(function($h) {
+					$actions = [];
+					if (!empty($h['acts'])) {
+						foreach (explode('|', $h['acts']) as $act) {
+							$parts = explode(':', $act);
+							$actions[] = [
+								's' => $parts[0], // street
+								'a' => $parts[1], // action
+								'v' => $parts[2] > 0 ? (float)$parts[2] : null // value
 							];
-						}, $history['actions'])
+						}
+					}
+					return [
+						'id' => (int)$h['hand_id'],
+						'pos' => $h['pos'],
+						'cards' => $h['cards'],
+						'acts' => $actions
 					];
-				}, $player['history'] ?? [])
+				}, $p['hist'] ?? [])
 			];
-			return $playerData;
 		}, $players),
-		'actions' => array_map(function($action) {
-			return [
-				'street' => substr($action['street'], 0, 1),
-				'player_id' => (int)$action['player_id'],
-				'type' => substr($action['action_type'], 0, 1),
-				'amount' => $action['amount'] ? round($action['amount'], 1) : null
-			];
-		}, $actionHistory),
-		'showdown' => $showdownData ? array_map(function($sd) {
-			return [
-				'player_id' => (int)$sd['player_id'],
-				'cards' => $sd['cards']
-			];
-		}, $showdownData) : null
+		'acts' => $actionHistory
 	];
 
-	$content = "Ты — профессиональный покерный AI. Это холдем онлайн турнир Bounty 8 max.";
-	$content = "Стадия турнира " . $input['stady'] . ".";
-	$content .= "Отвечай максимально коротко: действие (если рейз, то сколько) | короткое описание.";
-	$content .= json_encode($analysisData);
+	// Формируем запрос для ИИ
+	$content = "Ты — профессиональный покерный AI в турнире Bounty 8 max. Стадия: " . ($input['stage'] ?? 'unknown') . ".\n";
+	$content .= "Отвечай максимально коротко: действие (если рейз, то сколько) | короткое описание (буквально несколько слов).\n";
+	$content .= json_encode($analysisData, JSON_UNESCAPED_UNICODE);
 
 	$api_key = 'sk-JBDhoWZZwZSn8q2xmqmi9zETz12StFzC';
 	$url = 'https://api.proxyapi.ru/openai/v1/chat/completions';
 	$headers = ['Content-Type: application/json', 'Authorization: Bearer ' . $api_key];
 
 	$ch = curl_init($url);
-	curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-	curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-	curl_setopt($ch, CURLOPT_POST, true);
-	curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-		'model' => 'gpt-4.1',
-		'messages' => [[ 'role' => 'user', 'content' => $content ]],
-		'temperature' => 0.3
-	]));
-	$apiResponse = curl_exec($ch);
+	curl_setopt_array($ch, [
+		CURLOPT_RETURNTRANSFER => true,
+		CURLOPT_HTTPHEADER => $headers,
+		CURLOPT_POST => true,
+		CURLOPT_POSTFIELDS => json_encode([
+			'model' => 'gpt-4.1',
+			'messages' => [[ 'role' => 'user', 'content' => $content ]],
+			'temperature' => 0.3
+		])
+	]);
 
-	if (curl_errno($ch)) {
-		throw new Exception('Ошибка cURL: ' . curl_error($ch));
-	}
+	$apiResponse = curl_exec($ch);
+	if (curl_errno($ch)) throw new Exception('CURL error: ' . curl_error($ch));
 
 	$apiResponse = json_decode($apiResponse);
 	if (!$apiResponse || !isset($apiResponse->choices[0]->message->content)) {
@@ -224,13 +218,13 @@ try {
 
 	$response = [
 		'success' => true,
-		'analysis' => $analysisData,
-		'data' => $apiResponse->choices[0]->message->content
+		'data' => $apiResponse->choices[0]->message->content,
+		'analysis' => $analysisData // optional, можно убрать в продакшене
 	];
 
 } catch (Exception $e) {
 	$response['error'] = $e->getMessage();
 } finally {
 	if (isset($ch)) curl_close($ch);
-	echo json_encode($response);
+	echo json_encode($response, JSON_UNESCAPED_UNICODE);
 }
