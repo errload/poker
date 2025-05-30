@@ -1,6 +1,6 @@
 const positions = ['BTN', 'SB', 'BB', 'UTG', 'UTG+1', 'MP', 'HJ', 'CO']
 let hand_id = null
-let bid_counter = 2.2
+let bid_counter = 1
 
 // remove class list
 const removeClassCards = elem => {
@@ -50,12 +50,6 @@ const getBoardStatus = () => {
 	if (counter === 5) return 'river'
 }
 
-// const startLoadBid = elem => {
-// 	const caption = elem.querySelector('.player label').textContent
-// 	elem.querySelector('.player label').textContent = ''
-//
-// }
-
 async function sendAjax(url, params) {
 	const response = await fetch(url, {
 		method: 'POST',
@@ -67,36 +61,17 @@ async function sendAjax(url, params) {
 	return result
 }
 
-// ставка
-async function sendPlayerAction(handId, playerId, street, actionType, amount = null) {
-	try {
-		const response = await fetch('/4bet/api/action_handler.php', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({
-				"hand_id": 2,
-				"player_id": 1,
-				"street": "preflop",
-				"action_type": "raise",
-				"amount": 5.0,
-				"current_stack": 43.0
-			})
-		});
-
-		const data = await response.json();
-		if (!data.success) throw new Error(data.error);
-
-		console.log('Action saved:', data.action_id);
-		return data;
-	} catch (error) {
-		console.error('Error:', error);
-	}
-}
-
-const changeSelectStack = elem => {
+const changeSelectStack = (elem, is_allin) => {
 	select_value = parseFloat(elem.querySelector('.select_stack').value)
-	select_value = Math.floor(select_value - bid_counter)
-	if (select_value < 0) select_value = 0
+
+	if (is_allin) {
+		bid_counter = select_value > bid_counter ? select_value : bid_counter
+		select_value = 0
+	} else {
+		select_value = Math.floor(select_value - bid_counter)
+		if (select_value < 0) select_value = 0
+	}
+
 	elem.querySelector('.select_stack').value = select_value
 	return select_value
 }
@@ -121,7 +96,7 @@ document
 		radio.addEventListener('change', async function () {
 			let radio_ID = parseInt(this.getAttribute('data-id'))
 			hand_id = null
-			bid_counter = 0
+			bid_counter = 1
 
 			positions.forEach((value, key) => {
 				const player = document.querySelector(`.player.player${radio_ID}`)
@@ -319,6 +294,7 @@ document
 	.forEach(elem => {
 		elem.addEventListener('click', async function () {
 			const player = this.closest('.player')
+			console.log(bid_counter)
 
 			player.querySelector('.player_buttons').style.display = 'none'
 
@@ -345,13 +321,15 @@ document
 	.forEach(elem => {
 		elem.addEventListener('click', async function () {
 			const player = this.closest('.player')
+			changeSelectStack(player, false)
+			console.log(bid_counter)
 
 			const result = await sendAjax('/4bet/api/action_handler.php', {
 				'hand_id': hand_id,
 				'player_id': player.querySelector('.radio').value,
 				"street": getBoardStatus(),
 				'action_type': 'call',
-				'amount': null,
+				'amount': bid_counter,
 				'current_stack': player.querySelector('.select_stack').value
 			})
 
@@ -366,10 +344,7 @@ document
 	.forEach(elem => {
 		elem.addEventListener('click', async function () {
 			const player = this.closest('.player')
-			const player_ID = player.querySelector('.radio').value
-			const player_name = player.querySelector('.radio').getAttribute('id')
-			const position = player.querySelector('.player_position').textContent
-			const stack = player.querySelector('.select_stack').value
+			console.log(bid_counter)
 
 			const result = await sendAjax('/4bet/api/action_handler.php', {
 				'hand_id': hand_id,
@@ -401,42 +376,56 @@ document
 				const bid_raise = document.createElement('div')
 				bid_raise.classList.add('bid_raise')
 				bid_raise.textContent = sum
-				popup.appendChild(bid_raise)
-			}
+				return bid_raise
+			};
 
-			const bids = [
-				1, 1.5, 1.7, 1.9, 2, 2.1, 2.2, 2.3, 2.5, 2.8, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 8, 9,
-				10, 11, 12, 14, 16, 18, 20, 23, 27, 30, 35, 40, 45, 50, 60, 70, 80, 90, 100
+			const bidRows = [
+				[1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9],
+				[2, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9],
+				[3, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9],
+				[4, 4.2, 4.4, 4.6, 4.8],
+				[5, 5.2, 5.4, 5.6, 5.8],
+				[6, 6.5, 7, 7.5, 8, 8.5, 9],
+				[10, 15, 20, 25, 30, 35, 40, 45, 50],
+				[55, 60, 65, 70, 75, 80, 85, 90, 95, 100]
 			]
 
-			for (let bid in bids) {
-				const bid_raise = document.createElement('div')
-				bid_raise.classList.add('bid_raise')
-				bid_raise.textContent = bids[bid]
-				popup.appendChild(bid_raise)
-			}
+			bidRows.forEach(row => {
+				const rowContainer = document.createElement('div')
+				rowContainer.classList.add('bid-row')
+				row.forEach(bid => { rowContainer.appendChild(addBidRaise(bid)) })
+				popup.appendChild(rowContainer)
+			})
 
-			overlay.appendChild(popup);
-			document.body.appendChild(overlay);
+			overlay.appendChild(popup)
+			document.body.appendChild(overlay)
 
-			document
-				.querySelector('.popup-overlay')
-				.addEventListener('click', e => {
-					if (!e.target.classList.contains('popup-overlay')) return false
-					document.body.removeChild(overlay);
-				})
+			document.querySelector('.popup-overlay').addEventListener('click', e => {
+				if (!e.target.classList.contains('popup-overlay')) return false
+				document.body.removeChild(overlay)
+			})
 
 			document
 				.querySelectorAll('.bid_raise')
 				.forEach(bid_raise => {
-					bid_raise.addEventListener('click', e => {
-						const player_ID = player.querySelector('.radio').value
-						const player_name = player.querySelector('.radio').getAttribute('id')
-						const position = player.querySelector('.player_position').textContent
-						const stack = player.querySelector('.select_stack').value
-						const bid = e.target.textContent
+					bid_raise.addEventListener('click', async (e) => {
+						let currant_stack = changeSelectStack(player, false)
+						currant_stack = Math.floor(currant_stack - e.target.textContent)
+						player.querySelector('.select_stack').value = currant_stack
+						bid_counter += parseFloat(e.target.textContent)
+						console.log(bid_counter)
 
-						console.log([player_ID, player_name, position, stack, `raise ${bid} BB`])
+						const result = await sendAjax('/4bet/api/action_handler.php', {
+							'hand_id': hand_id,
+							'player_id': player.querySelector('.radio').value,
+							"street": getBoardStatus(),
+							'action_type': 'raise',
+							'amount': bid_counter,
+							'current_stack': player.querySelector('.select_stack').value
+						})
+
+						console.log(result)
+						showNotification('raise')
 						document.body.removeChild(overlay);
 					})
 				})
@@ -447,14 +436,22 @@ document
 document
 	.querySelectorAll('.player .all-in')
 	.forEach(elem => {
-		elem.addEventListener('click', function () {
+		elem.addEventListener('click', async function () {
 			const player = this.closest('.player')
-			const player_ID = player.querySelector('.radio').value
-			const player_name = player.querySelector('.radio').getAttribute('id')
-			const position = player.querySelector('.player_position').textContent
-			const stack = player.querySelector('.select_stack').value
+			changeSelectStack(player, true)
+			console.log(bid_counter)
 
-			console.log([player_ID, player_name, position, stack, 'all-in'])
+			const result = await sendAjax('/4bet/api/action_handler.php', {
+				'hand_id': hand_id,
+				'player_id': player.querySelector('.radio').value,
+				"street": getBoardStatus(),
+				'action_type': 'all-in',
+				'amount': bid_counter,
+				'current_stack': player.querySelector('.select_stack').value
+			})
+
+			console.log(result)
+			showNotification('all-in')
 		})
 	})
 
