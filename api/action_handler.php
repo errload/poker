@@ -2,17 +2,9 @@
 header('Content-Type: application/json');
 require_once __DIR__.'/../db/config.php';
 
-try {
-	$pdo = new PDO(
-		"mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4",
-		DB_USER,
-		DB_PASS,
-		[
-			PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-			PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-		]
-	);
+$response = ['success' => false, 'error' => null];
 
+try {
 	// Получаем и проверяем входные данные
 	$input = json_decode(file_get_contents('php://input'), true);
 	if (!$input) {
@@ -32,6 +24,17 @@ try {
 		throw new Exception("current_stack is required for non-fold actions");
 	}
 
+	// Создаем подключение только после проверки входных данных
+	$pdo = new PDO(
+		"mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4",
+		DB_USER,
+		DB_PASS,
+		[
+			PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+			PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+		]
+	);
+
 	// Начинаем транзакцию
 	$pdo->beginTransaction();
 
@@ -41,11 +44,11 @@ try {
 		$stmt->execute([$input['hand_id']]);
 		if (!$stmt->fetch()) {
 			$pdo->commit();
-			echo json_encode([
+			$response = [
 				'success' => true,
 				'message' => "Hand with ID {$input['hand_id']} not found, action not recorded",
 				'hand_id' => $input['hand_id']
-			]);
+			];
 			exit;
 		}
 
@@ -113,11 +116,11 @@ try {
 		// Фиксируем транзакцию
 		$pdo->commit();
 
-		echo json_encode([
+		$response = [
 			'success' => true,
 			'action_id' => $action_id,
 			'message' => 'Action recorded successfully'
-		]);
+		];
 
 	} catch (Exception $e) {
 		$pdo->rollBack();
@@ -125,11 +128,9 @@ try {
 	}
 
 } catch (Exception $e) {
-	http_response_code(400);
-	echo json_encode([
-		'success' => false,
-		'error' => $e->getMessage()
-	]);
+	$response['error'] = $e->getMessage();
+} finally {
+	echo json_encode($response);
 }
 
 /**

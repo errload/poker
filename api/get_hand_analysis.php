@@ -2,17 +2,9 @@
 header('Content-Type: application/json');
 require_once __DIR__.'/../db/config.php';
 
-try {
-	$pdo = new PDO(
-		"mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4",
-		DB_USER,
-		DB_PASS,
-		[
-			PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-			PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-		]
-	);
+$response = ['success' => false, 'error' => null];
 
+try {
 	$input = json_decode(file_get_contents('php://input'), true);
 	if (!$input) {
 		throw new Exception('Invalid JSON input');
@@ -25,6 +17,17 @@ try {
 			throw new Exception("Missing required field: $field");
 		}
 	}
+
+	// Создаем подключение к БД только после проверки входных данных
+	$pdo = new PDO(
+		"mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4",
+		DB_USER,
+		DB_PASS,
+		[
+			PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+			PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+		]
+	);
 
 	// 1. Получаем информацию о текущей раздаче
 	$handStmt = $pdo->prepare("
@@ -42,24 +45,24 @@ try {
 
 	// 2. Получаем активных игроков с их последним стеком
 	$playersStmt = $pdo->prepare("
-    SELECT 
-        p.player_id, p.nickname, p.vpip, p.pfr, p.af, p.afq, p.three_bet, 
-        p.wtsd, p.wsd, p.hands_played,
-        a.current_stack,
-        a.action_type as last_action
-    FROM players p
-    JOIN (
         SELECT 
-            player_id, 
-            MAX(sequence_num) as last_seq
-        FROM actions
-        WHERE hand_id = ?
-        AND action_type != 'fold'
-        GROUP BY player_id
-    ) last ON p.player_id = last.player_id
-    JOIN actions a ON a.hand_id = ? AND a.player_id = p.player_id AND a.sequence_num = last.last_seq
-    ORDER BY a.sequence_num ASC
-");
+            p.player_id, p.nickname, p.vpip, p.pfr, p.af, p.afq, p.three_bet, 
+            p.wtsd, p.wsd, p.hands_played,
+            a.current_stack,
+            a.action_type as last_action
+        FROM players p
+        JOIN (
+            SELECT 
+                player_id, 
+                MAX(sequence_num) as last_seq
+            FROM actions
+            WHERE hand_id = ?
+            AND action_type != 'fold'
+            GROUP BY player_id
+        ) last ON p.player_id = last.player_id
+        JOIN actions a ON a.hand_id = ? AND a.player_id = p.player_id AND a.sequence_num = last.last_seq
+        ORDER BY a.sequence_num ASC
+    ");
 	if (!$playersStmt->execute([$input['hand_id'], $input['hand_id']])) {
 		throw new Exception("Failed to execute players query");
 	}
@@ -207,25 +210,26 @@ try {
 		'messages' => [[ 'role' => 'user', 'content' => $content ]],
 		'temperature' => 0.3
 	]));
-	$response = curl_exec($ch);
+	$apiResponse = curl_exec($ch);
 
-	if (curl_errno($ch)) echo json_encode('Ошибка cURL: ' . curl_error($ch));
-	else {
-		$response = json_decode($response);
-		$response = $response->choices[0]->message->content;
-		echo json_encode([
-			'success' => true,
-			'analysis' => $analysisData,
-			'data' => $response
-		]);
+	if (curl_errno($ch)) {
+		throw new Exception('Ошибка cURL: ' . curl_error($ch));
 	}
 
-	curl_close($ch);
+	$apiResponse = json_decode($apiResponse);
+	if (!$apiResponse || !isset($apiResponse->choices[0]->message->content)) {
+		throw new Exception('Invalid API response');
+	}
+
+	$response = [
+		'success' => true,
+		'analysis' => $analysisData,
+		'data' => $apiResponse->choices[0]->message->content
+	];
 
 } catch (Exception $e) {
-	http_response_code(400);
-	echo json_encode([
-		'success' => false,
-		'error' => $e->getMessage()
-	]);
+	$response['error'] = $e->getMessage();
+} finally {
+	if (isset($ch)) curl_close($ch);
+	echo json_encode($response);
 }

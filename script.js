@@ -71,6 +71,7 @@ document
 			const option = document.createElement('option')
 			option.value = i
 			option.textContent = i
+			if (i === 125) option.setAttribute('selected', 'selected')
 			elem.appendChild(option)
 		}
 	})
@@ -100,7 +101,6 @@ document
 				if (radio_ID > 8) radio_ID = 1
 			})
 
-			// чистим борд
 			document
 				.querySelectorAll('.board_slot')
 				.forEach(elem => {
@@ -111,8 +111,13 @@ document
 				hero_position: document.querySelector('.player1 .player_position').textContent,
 				hero_stack: document.querySelector('.player1 .select_stack').value,
 				stacks: {
-					player1: 48.0,
-					player2: 52.5
+					player2: document.querySelector('.player2 .select_stack').value,
+					player3: document.querySelector('.player3 .select_stack').value,
+					player4: document.querySelector('.player4 .select_stack').value,
+					player5: document.querySelector('.player5 .select_stack').value,
+					player6: document.querySelector('.player6 .select_stack').value,
+					player7: document.querySelector('.player7 .select_stack').value,
+					player8: document.querySelector('.player8 .select_stack').value
 				},
 				hero_cards: null
 			})
@@ -126,13 +131,14 @@ document
 document
 	.querySelectorAll('.slots .slot')
 	.forEach(elem => {
-		elem.addEventListener('click', function () {
+		elem.addEventListener('click', async function () {
 			const classCard = (this.className).split(' ')[1]
 
 			if (!document.querySelectorAll('.player1 .slot')[0].textContent) {
 				document.querySelectorAll('.player1 .slot')[0].textContent = this.textContent
 				document.querySelectorAll('.player1 .slot')[0].classList.remove('check')
 				document.querySelectorAll('.player1 .slot')[0].classList.add(classCard)
+				document.querySelectorAll('.player1 .slot')[0].dataset.card = this.dataset.slot
 				return false
 			}
 
@@ -140,6 +146,20 @@ document
 				document.querySelectorAll('.player1 .slot')[1].textContent = this.textContent
 				document.querySelectorAll('.player1 .slot')[1].classList.remove('check')
 				document.querySelectorAll('.player1 .slot')[1].classList.add(classCard)
+				document.querySelectorAll('.player1 .slot')[1].dataset.card = this.dataset.slot
+
+				let cards = ''
+				cards = document.querySelectorAll('.player1 .slot')[0].textContent
+				cards += document.querySelectorAll('.player1 .slot')[0].dataset.card
+				cards += document.querySelectorAll('.player1 .slot')[1].textContent
+				cards += document.querySelectorAll('.player1 .slot')[1].dataset.card
+
+				const result = await sendAjax('/4bet/api/update_hero_cards.php', {
+					hand_id: hand_id,
+					hero_cards: cards
+				})
+
+				console.log(result)
 				return false
 			}
 
@@ -204,6 +224,8 @@ document
 
 			removeClassCards(player.querySelectorAll('.stack_cards .slot')[0])
 			removeClassCards(player.querySelectorAll('.stack_cards .slot')[1])
+
+			console.log(player.querySelector('.select_stack').value)
 
 			const result = await sendAjax('/4bet/api/action_handler.php', {
 				'hand_id': hand_id,

@@ -2,19 +2,13 @@
 header('Content-Type: application/json');
 require_once __DIR__.'/../db/config.php';
 
-try {
-	$pdo = new PDO(
-		"mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4",
-		DB_USER,
-		DB_PASS,
-		[
-			PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-			PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
-		]
-	);
+$response = ['success' => false, 'error' => null];
 
+try {
 	$input = json_decode(file_get_contents('php://input'), true);
-	if (!$input) throw new Exception('Invalid JSON input');
+	if (!$input) {
+		throw new Exception('Invalid JSON input');
+	}
 
 	// Проверяем обязательные поля
 	$required = ['hand_id', 'hero_cards'];
@@ -28,6 +22,17 @@ try {
 	if (!preg_match('/^[2-9TJQKA][cdhs][2-9TJQKA][cdhs]$|^[2-9TJQKA]{2}$/i', $input['hero_cards'])) {
 		throw new Exception("Invalid cards format. Use format like 'AhKd' or 'AK'");
 	}
+
+	// Создаем подключение только после проверки входных данных
+	$pdo = new PDO(
+		"mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4",
+		DB_USER,
+		DB_PASS,
+		[
+			PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+			PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+		]
+	);
 
 	// Обновляем только если текущее значение NULL
 	$stmt = $pdo->prepare("
@@ -49,18 +54,16 @@ try {
 		throw new Exception("No rows updated. Either hand not found or cards already set.");
 	}
 
-	echo json_encode([
+	$response = [
 		'success' => true,
 		'hand_id' => $input['hand_id'],
 		'hero_cards' => $input['hero_cards'],
 		'rows_affected' => $rowsAffected
-	]);
+	];
 
 } catch (Exception $e) {
-	http_response_code(400);
-	echo json_encode([
-		'success' => false,
-		'error' => $e->getMessage()
-	]);
+	$response['error'] = $e->getMessage();
+} finally {
+	echo json_encode($response);
 }
 ?>
