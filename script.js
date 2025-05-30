@@ -267,6 +267,39 @@ document
 				console.log(result)
 				return false
 			}
+
+			let start_position = null
+			document
+				.querySelectorAll('.player')
+				.forEach((elem, key) => {
+					key++
+					if (elem.querySelector('.player_position').textContent === 'BTN') {
+						start_position = key
+					}
+				})
+
+			for (let i = 0; i < 8; i++) {
+				start_position++
+				if (start_position > 8) start_position = 1
+				player = document.querySelector(`.player${start_position}`)
+				if (player.querySelector('.player_buttons').style.display === 'none') continue
+
+				if (!player.querySelectorAll('.slot')[0].textContent) {
+					player.querySelectorAll('.slot')[0].textContent = this.textContent
+					player.querySelectorAll('.slot')[0].classList.remove('check')
+					player.querySelectorAll('.slot')[0].classList.add(classCard)
+					player.querySelectorAll('.slot')[0].dataset.card = this.dataset.slot
+					return false
+				}
+
+				if (!player.querySelectorAll('.slot')[1].textContent) {
+					player.querySelectorAll('.slot')[1].textContent = this.textContent
+					player.querySelectorAll('.slot')[1].classList.remove('check')
+					player.querySelectorAll('.slot')[1].classList.add(classCard)
+					player.querySelectorAll('.slot')[1].dataset.card = this.dataset.slot
+					return false
+				}
+			}
 		})
 	})
 
@@ -412,13 +445,6 @@ document
 						bid_counter = parseFloat(e.target.textContent)
 						changeSelectStack(player, false)
 
-
-						// let currant_stack = changeSelectStack(player, false)
-						// currant_stack = Math.floor(currant_stack - e.target.textContent)
-						// player.querySelector('.select_stack').value = currant_stack
-						// bid_counter = parseFloat(e.target.textContent)
-						// console.log(bid_counter)
-
 						const result = await sendAjax('/4bet/api/action_handler.php', {
 							'hand_id': hand_id,
 							'player_id': player.querySelector('.radio').value,
@@ -521,37 +547,4 @@ document
 
 		console.log(result)
 		document.querySelector('.line_result').textContent = result.data
-
-		// const hand_id = 2; // ID текущей раздачи
-		// const current_street = 'flop'; // Текущая улица: 'preflop', 'flop', 'turn', 'river'
-		// const heroPos = 'BTN'; // Позиция героя
-		//
-		// try {
-		// 	const response = await fetch('/4bet/api/get_hand_analysis.php', {
-		// 		method: 'POST',
-		// 		headers: {
-		// 			'Content-Type': 'application/json',
-		// 		},
-		// 		body: JSON.stringify({
-		// 			hand_id: handId,
-		// 			current_street: currentStreet,
-		// 			hero_position: heroPos
-		// 		})
-		// 	});
-		//
-		// 	const result = await response.json();
-		//
-		// 	if (!result.success) {
-		// 		console.error('Analysis error:', result.error);
-		// 		return null;
-		// 	}
-		//
-		// 	// Обработка рекомендации ИИ
-		// 	console.log('AI Recommendation:', result.ai_recommendation);
-		//
-		// } catch (error) {
-		// 	console.error('Network error:', error);
-		// 	return null;
-		// }
-
 	})
