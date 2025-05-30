@@ -78,7 +78,11 @@ try {
 		$player = $stmt->fetch();
 
 		if (!$player) {
-			$nickname = "Player" . substr(preg_replace('/[^0-9]/', '', $player_id), 0, 3);
+			// Извлекаем первую цифру из ID игрока
+			preg_match('/\d/', $player_id, $matches);
+			$firstDigit = $matches[0] ?? '0';
+			$nickname = "Player{$firstDigit}";
+
 			$stmt = $pdo->prepare("
                 INSERT INTO players 
                 (player_id, nickname, last_seen, created_at) 

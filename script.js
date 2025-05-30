@@ -409,11 +409,15 @@ document
 				.querySelectorAll('.bid_raise')
 				.forEach(bid_raise => {
 					bid_raise.addEventListener('click', async (e) => {
-						let currant_stack = changeSelectStack(player, false)
-						currant_stack = Math.floor(currant_stack - e.target.textContent)
-						player.querySelector('.select_stack').value = currant_stack
-						bid_counter += parseFloat(e.target.textContent)
-						console.log(bid_counter)
+						bid_counter = parseFloat(e.target.textContent)
+						changeSelectStack(player, false)
+
+
+						// let currant_stack = changeSelectStack(player, false)
+						// currant_stack = Math.floor(currant_stack - e.target.textContent)
+						// player.querySelector('.select_stack').value = currant_stack
+						// bid_counter = parseFloat(e.target.textContent)
+						// console.log(bid_counter)
 
 						const result = await sendAjax('/4bet/api/action_handler.php', {
 							'hand_id': hand_id,
@@ -425,7 +429,7 @@ document
 						})
 
 						console.log(result)
-						showNotification('raise')
+						showNotification('raise ' + bid_counter + ' bb')
 						document.body.removeChild(overlay);
 					})
 				})
@@ -451,7 +455,7 @@ document
 			})
 
 			console.log(result)
-			showNotification('all-in')
+			showNotification('all-in ' + bid_counter + ' bb')
 		})
 	})
 
