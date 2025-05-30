@@ -513,36 +513,45 @@ document
 	.querySelector('.gto')
 	.addEventListener('click', async function () {
 
-		const handId = 2; // ID текущей раздачи
-		const currentStreet = 'flop'; // Текущая улица: 'preflop', 'flop', 'turn', 'river'
-		const heroPos = 'BTN'; // Позиция героя
+		const result = await sendAjax('/4bet/api/get_hand_analysis.php', {
+			'hand_id': hand_id,
+			'current_street': getBoardStatus(),
+			"hero_position": document.querySelector('.player .player_position').textContent
+		})
 
-		try {
-			const response = await fetch('/4bet/api/get_hand_analysis.php', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify({
-					hand_id: handId,
-					current_street: currentStreet,
-					hero_position: heroPos
-				})
-			});
+		console.log(result)
+		document.querySelector('.line_result').textContent = result.data
 
-			const result = await response.json();
-
-			if (!result.success) {
-				console.error('Analysis error:', result.error);
-				return null;
-			}
-
-			// Обработка рекомендации ИИ
-			console.log('AI Recommendation:', result.ai_recommendation);
-
-		} catch (error) {
-			console.error('Network error:', error);
-			return null;
-		}
+		// const hand_id = 2; // ID текущей раздачи
+		// const current_street = 'flop'; // Текущая улица: 'preflop', 'flop', 'turn', 'river'
+		// const heroPos = 'BTN'; // Позиция героя
+		//
+		// try {
+		// 	const response = await fetch('/4bet/api/get_hand_analysis.php', {
+		// 		method: 'POST',
+		// 		headers: {
+		// 			'Content-Type': 'application/json',
+		// 		},
+		// 		body: JSON.stringify({
+		// 			hand_id: handId,
+		// 			current_street: currentStreet,
+		// 			hero_position: heroPos
+		// 		})
+		// 	});
+		//
+		// 	const result = await response.json();
+		//
+		// 	if (!result.success) {
+		// 		console.error('Analysis error:', result.error);
+		// 		return null;
+		// 	}
+		//
+		// 	// Обработка рекомендации ИИ
+		// 	console.log('AI Recommendation:', result.ai_recommendation);
+		//
+		// } catch (error) {
+		// 	console.error('Network error:', error);
+		// 	return null;
+		// }
 
 	})
