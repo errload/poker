@@ -513,64 +513,15 @@ document
 		})
 	})
 
-// click write
-// document
-// 	.querySelector('.write')
-// 	.addEventListener('click', async function () {
-//
-// 		const handId = 2; // ID раздачи
-// 		// const players = [
-// 		// 	{ player_id: 111, cards: 'AhKh' }, // Герой
-// 		// 	{ player_id: 333, cards: 'QcQd' }, // Оппонент 1
-// 		// ];
-//
-// 		try {
-// 			const response = await fetch('/4bet/api/showdown_handler.php', {
-// 				method: 'POST',
-// 				headers: {
-// 					'Content-Type': 'application/json',
-// 				},
-// 				body: JSON.stringify({
-// 					"hand_id": handId,
-// 					"players": [
-// 						{
-// 							"player_id": 1,
-// 							"cards": "Ah9h"
-// 						},
-// 						{
-// 							"player_id": 2,
-// 							"cards": "QcQd"
-// 						}
-// 					]
-// 				})
-// 			});
-//
-// 			const result = await response.json();
-//
-// 			if (!result.success) {
-// 				console.error('Showdown error:', result.error);
-// 				return false;
-// 			}
-//
-// 			console.log('Showdown recorded:', result.message);
-// 			return true;
-//
-// 		} catch (error) {
-// 			console.error('Network error:', error);
-// 			return false;
-// 		}
-//
-// 	})
-
 // click gto
 document
 	.querySelector('.gto')
 	.addEventListener('click', async function () {
-
 		const result = await sendAjax('/4bet/api/get_hand_analysis.php', {
 			'hand_id': hand_id,
 			'current_street': getBoardStatus(),
-			"hero_position": document.querySelector('.player .player_position').textContent
+			"hero_position": document.querySelector('.player .player_position').textContent,
+			"stady": document.querySelector('.line_content .radio:checked').value
 		})
 
 		console.log(result)
