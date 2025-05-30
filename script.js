@@ -1,4 +1,5 @@
 const positions = ['BTN', 'SB', 'BB', 'UTG', 'UTG1', 'LJ', 'HJ', 'CO']
+let bid_counter = 2.2
 
 // remove class list
 const removeClassCards = elem => {
@@ -46,11 +47,19 @@ async function sendPlayerAction(handId, playerId, street, actionType, amount = n
 	}
 }
 
+const changeStack = elem => {
+	select_value = parseFloat(elem.querySelector('.select_stack').value)
+	select_value = Math.floor(select_value - bid_counter)
+	if (select_value < 0) select_value = 0
+	elem.querySelector('.select_stack').value = select_value
+	return select_value
+}
+
 // add options select stacks
 document
 	.querySelectorAll('.player .select_stack')
 	.forEach(elem => {
-		for (let i = 125; i !== 0; i--) {
+		for (let i = 125; i >= 0; i--) {
 			const option = document.createElement('option')
 			option.value = i
 			option.textContent = i
@@ -64,6 +73,7 @@ document
 	.forEach(radio => {
 		radio.addEventListener('change', async function () {
 			let radio_ID = parseInt(this.getAttribute('data-id'))
+			bid_counter = 0
 
 			positions.forEach((value, key) => {
 				const player = document.querySelector(`.player.player${radio_ID}`)
@@ -72,7 +82,6 @@ document
 				player.querySelector('.player_position').textContent = value
 
 				// отображаем игроков
-				player.querySelector('.stack_cards').style.display = 'flex'
 				player.querySelector('.player_buttons').style.display = 'flex'
 
 				// чистим карты
@@ -116,7 +125,7 @@ document
 
 				if (data.success) {
 					console.log('Новая раздача создана! ID:', data.hand_id);
-					sessionStorage.setItem('current_hand_id', data.hand_id);
+					sessionStorage.setItem('hand_id', data.hand_id);
 				} else {
 					console.error('Ошибка:', data.error);
 				}
@@ -247,29 +256,20 @@ document
 	.forEach(elem => {
 		elem.addEventListener('click', function () {
 			const player = this.closest('.player')
-			const player_id = player.querySelector('.radio').value
-			const player_name = player.querySelector('.radio').getAttribute('id')
-			const position = player.querySelector('.player_position').textContent
-			const stack = player.querySelector('.select_stack').value
 
-			player.querySelector('.stack_cards').style.display = 'none'
 			player.querySelector('.player_buttons').style.display = 'none'
 
 			removeClassCards(player.querySelectorAll('.stack_cards .slot')[0])
 			removeClassCards(player.querySelectorAll('.stack_cards .slot')[1])
 
 			result = sendAjax('/4bet/api/action_handler.php', {
-				'hand_id': 2,
-				'player_id': player_id,
+				'hand_id': sessionStorage.getItem('hand_id'),
+				'player_id': player.querySelector('.radio').value,
 				"street": 'preflop',
 				'action_type': 'fold',
 				'amount': null,
-				'current_stack': document.querySelector(`.player${player_id} .select_stack`).value
+				'current_stack': player.querySelector('.select_stack').value
 			})
-
-			// sendPlayerAction(2, 333, 'preflop', 'all-in', 14)
-			//
-			// console.log([player_ID, player_name, position, stack, 'fold'])
 		})
 	})
 
