@@ -184,6 +184,8 @@ document
 		} catch (error) {
 			console.error('Network error:', error);
 		}
+
+		this.value = 'kick'
 	})
 
 // click clear
