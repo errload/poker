@@ -11,6 +11,12 @@ const removeClassCards = elem => {
 	elem.textContent = ''
 }
 
+// const startLoadBid = elem => {
+// 	const caption = elem.querySelector('.player label').textContent
+// 	elem.querySelector('.player label').textContent = ''
+//
+// }
+
 async function sendAjax(url, params) {
 	const response = await fetch(url, {
 		method: 'POST',
@@ -18,7 +24,8 @@ async function sendAjax(url, params) {
 		body: JSON.stringify(params)
 	})
 
-	return result = await response.json()
+	const result = await response.json()
+	return result
 }
 
 // ставка
@@ -47,7 +54,7 @@ async function sendPlayerAction(handId, playerId, street, actionType, amount = n
 	}
 }
 
-const changeStack = elem => {
+const changeSelectStack = elem => {
 	select_value = parseFloat(elem.querySelector('.select_stack').value)
 	select_value = Math.floor(select_value - bid_counter)
 	if (select_value < 0) select_value = 0
@@ -193,68 +200,24 @@ document
 	.querySelector('.select_kick')
 	.addEventListener('change', async function () {
 		if (this.value === 'kick') return false
-		console.log(this.value)
-
-		try {
-			const response = await fetch('/4bet/api/delete_player.php', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify({ player_id: this.value })
-			});
-
-			const result = await response.json();
-
-			if (response.ok) {
-				console.log('Player deleted successfully:', result.message);
-				// Обновляем UI или выполняем другие действия после успешного удаления
-			} else {
-				console.error('Error deleting player:', result.error);
-			}
-		} catch (error) {
-			console.error('Network error:', error);
-		}
-
+		const result = await sendAjax('/4bet/api/delete_player.php', { player_id: this.value })
 		this.value = 'kick'
+		console.log(result)
 	})
 
 // click clear
 document
 	.querySelector('.clear')
 	.addEventListener('click', async function () {
-		console.log('clear')
-
-		try {
-			const response = await fetch('/4bet/api/reset_database.php', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify({ confirm: true })
-			});
-
-			const result = await response.json();
-
-			if (response.ok) {
-				console.log('Database reset successfully:', result.message);
-				alert('База данных успешно очищена!');
-				// Обновляем UI или выполняем другие действия после сброса
-			} else {
-				console.error('Error resetting database:', result.error);
-				alert('Ошибка при очистке базы данных: ' + result.error);
-			}
-		} catch (error) {
-			console.error('Network error:', error);
-			alert('Сетевая ошибка: ' + error.message);
-		}
+		const result = await sendAjax('/4bet/api/reset_database.php', { confirm: true })
+		console.log(result)
 	})
 
 // click fold
 document
 	.querySelectorAll('.player .fold')
 	.forEach(elem => {
-		elem.addEventListener('click', function () {
+		elem.addEventListener('click', async function () {
 			const player = this.closest('.player')
 
 			player.querySelector('.player_buttons').style.display = 'none'
@@ -262,7 +225,7 @@ document
 			removeClassCards(player.querySelectorAll('.stack_cards .slot')[0])
 			removeClassCards(player.querySelectorAll('.stack_cards .slot')[1])
 
-			result = sendAjax('/4bet/api/action_handler.php', {
+			const result = await sendAjax('/4bet/api/action_handler.php', {
 				'hand_id': sessionStorage.getItem('hand_id'),
 				'player_id': player.querySelector('.radio').value,
 				"street": 'preflop',
@@ -270,6 +233,8 @@ document
 				'amount': null,
 				'current_stack': player.querySelector('.select_stack').value
 			})
+
+			console.log(result)
 		})
 	})
 

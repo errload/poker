@@ -30,21 +30,33 @@ try {
 	$pdo->beginTransaction();
 
 	try {
-		// 1. Удаляем связанные данные с использованием подготовленных запросов
+		// 1. Проверяем существование игрока
+		$stmt = $pdo->prepare("SELECT COUNT(*) FROM `players` WHERE `player_id` = ?");
+		$stmt->execute([$playerId]);
+		$playerExists = $stmt->fetchColumn();
+
+		if (!$playerExists) {
+			$pdo->commit();
+			echo json_encode([
+				'status' => 'success',
+				'message' => 'Player does not exist, nothing to delete',
+				'player_id' => $playerId
+			]);
+			exit;
+		}
+
+		// 2. Удаляем связанные данные с использованием подготовленных запросов
 		$tables = ['actions', 'showdowns'];
+		$deletedRelated = 0;
 		foreach ($tables as $table) {
 			$stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `player_id` = ?");
 			$stmt->execute([$playerId]);
+			$deletedRelated += $stmt->rowCount();
 		}
 
-		// 2. Удаляем самого игрока
+		// 3. Удаляем самого игрока
 		$stmt = $pdo->prepare("DELETE FROM `players` WHERE `player_id` = ?");
 		$stmt->execute([$playerId]);
-
-		$affectedRows = $stmt->rowCount();
-		if ($affectedRows === 0) {
-			throw new Exception('Player not found or already deleted');
-		}
 
 		// Фиксируем транзакцию
 		$pdo->commit();
@@ -54,7 +66,7 @@ try {
 			'status' => 'success',
 			'message' => 'Player and all related data deleted successfully',
 			'player_id' => $playerId,
-			'deleted_related' => count($tables)
+			'deleted_related' => $deletedRelated
 		]);
 
 	} catch (Exception $e) {
