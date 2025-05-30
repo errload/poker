@@ -35,6 +35,21 @@ function showNotification(message) {
 	}, 10)
 }
 
+const getBoardStatus = () => {
+	let counter = 0
+
+	document
+		.querySelectorAll('.board_slot')
+		.forEach(elem => {
+			if (elem.textContent) counter++
+		})
+
+	if (counter < 3) return 'preflop'
+	if (counter === 3) return 'flop'
+	if (counter === 4) return 'turn'
+	if (counter === 5) return 'river'
+}
+
 // const startLoadBid = elem => {
 // 	const caption = elem.querySelector('.player label').textContent
 // 	elem.querySelector('.player label').textContent = ''
@@ -129,6 +144,15 @@ document
 				.forEach(elem => {
 					removeClassCards(elem)
 				})
+
+			document
+				.querySelectorAll('.player')
+				.forEach(elem => {
+					elem.style.border = '1px solid #939393'
+				})
+			document
+				.querySelector(`.player.player${radio_ID}`)
+				.style.border = '3px solid #228B22'
 
 			const result = await sendAjax('/4bet/api/new_hand_mysql.php', {
 				hero_position: document.querySelector('.player1 .player_position').textContent,
@@ -298,22 +322,20 @@ document
 
 			player.querySelector('.player_buttons').style.display = 'none'
 
-			removeClassCards(player.querySelectorAll('.stack_cards .slot')[0])
-			removeClassCards(player.querySelectorAll('.stack_cards .slot')[1])
-
-			console.log(player.querySelector('.select_stack').value)
+			// removeClassCards(player.querySelectorAll('.stack_cards .slot')[0])
+			// removeClassCards(player.querySelectorAll('.stack_cards .slot')[1])
 
 			const result = await sendAjax('/4bet/api/action_handler.php', {
 				'hand_id': hand_id,
 				'player_id': player.querySelector('.radio').value,
-				"street": 'preflop',
+				"street": getBoardStatus(),
 				'action_type': 'fold',
 				'amount': null,
 				'current_stack': player.querySelector('.select_stack').value
 			})
 
 			console.log(result)
-			showNotification('fold');
+			showNotification('fold')
 		})
 	})
 
@@ -323,12 +345,18 @@ document
 	.forEach(elem => {
 		elem.addEventListener('click', async function () {
 			const player = this.closest('.player')
-			const player_ID = player.querySelector('.radio').value
-			const player_name = player.querySelector('.radio').getAttribute('id')
-			const position = player.querySelector('.player_position').textContent
-			const stack = player.querySelector('.select_stack').value
 
-			console.log([player_ID, player_name, position, stack, 'call'])
+			const result = await sendAjax('/4bet/api/action_handler.php', {
+				'hand_id': hand_id,
+				'player_id': player.querySelector('.radio').value,
+				"street": getBoardStatus(),
+				'action_type': 'call',
+				'amount': null,
+				'current_stack': player.querySelector('.select_stack').value
+			})
+
+			console.log(result)
+			showNotification('call')
 		})
 	})
 
@@ -336,14 +364,24 @@ document
 document
 	.querySelectorAll('.player .check')
 	.forEach(elem => {
-		elem.addEventListener('click', function () {
+		elem.addEventListener('click', async function () {
 			const player = this.closest('.player')
 			const player_ID = player.querySelector('.radio').value
 			const player_name = player.querySelector('.radio').getAttribute('id')
 			const position = player.querySelector('.player_position').textContent
 			const stack = player.querySelector('.select_stack').value
 
-			console.log([player_ID, player_name, position, stack, 'check'])
+			const result = await sendAjax('/4bet/api/action_handler.php', {
+				'hand_id': hand_id,
+				'player_id': player.querySelector('.radio').value,
+				"street": getBoardStatus(),
+				'action_type': 'check',
+				'amount': null,
+				'current_stack': player.querySelector('.select_stack').value
+			})
+
+			console.log(result)
+			showNotification('check')
 		})
 	})
 
