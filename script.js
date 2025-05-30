@@ -10,6 +10,16 @@ const removeClassCards = elem => {
 	elem.textContent = ''
 }
 
+async function sendAjax(url, params) {
+	const response = await fetch(url, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(params)
+	})
+
+	return result = await response.json()
+}
+
 // ставка
 async function sendPlayerAction(handId, playerId, street, actionType, amount = null) {
 	try {
@@ -35,6 +45,18 @@ async function sendPlayerAction(handId, playerId, street, actionType, amount = n
 		console.error('Error:', error);
 	}
 }
+
+// add options select stacks
+document
+	.querySelectorAll('.player .select_stack')
+	.forEach(elem => {
+		for (let i = 125; i !== 0; i--) {
+			const option = document.createElement('option')
+			option.value = i
+			option.textContent = i
+			elem.appendChild(option)
+		}
+	})
 
 // click radio player
 document
@@ -225,7 +247,7 @@ document
 	.forEach(elem => {
 		elem.addEventListener('click', function () {
 			const player = this.closest('.player')
-			const player_ID = player.querySelector('.radio').value
+			const player_id = player.querySelector('.radio').value
 			const player_name = player.querySelector('.radio').getAttribute('id')
 			const position = player.querySelector('.player_position').textContent
 			const stack = player.querySelector('.select_stack').value
@@ -236,9 +258,18 @@ document
 			removeClassCards(player.querySelectorAll('.stack_cards .slot')[0])
 			removeClassCards(player.querySelectorAll('.stack_cards .slot')[1])
 
-			sendPlayerAction(2, 333, 'preflop', 'all-in', 14)
+			result = sendAjax('/4bet/api/action_handler.php', {
+				'hand_id': 2,
+				'player_id': player_id,
+				"street": 'preflop',
+				'action_type': 'fold',
+				'amount': null,
+				'current_stack': document.querySelector(`.player${player_id} .select_stack`).value
+			})
 
-			console.log([player_ID, player_name, position, stack, 'fold'])
+			// sendPlayerAction(2, 333, 'preflop', 'all-in', 14)
+			//
+			// console.log([player_ID, player_name, position, stack, 'fold'])
 		})
 	})
 
