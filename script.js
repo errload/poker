@@ -12,6 +12,29 @@ const removeClassCards = elem => {
 	elem.textContent = ''
 }
 
+function showNotification(message) {
+	const notification = document.getElementById('notification')
+	let fadeOutTimeout
+
+	clearTimeout(fadeOutTimeout);
+	notification.style.transition = 'none'
+	notification.textContent = message
+	notification.style.opacity = '1'
+	notification.style.display = 'block'
+
+	setTimeout(() => {
+		notification.style.transition = 'opacity 1s ease'
+
+		fadeOutTimeout = setTimeout(() => {
+			notification.style.opacity = '0'
+
+			setTimeout(() => {
+				notification.style.display = 'none'
+			}, 500);
+		}, 300)
+	}, 10)
+}
+
 // const startLoadBid = elem => {
 // 	const caption = elem.querySelector('.player label').textContent
 // 	elem.querySelector('.player label').textContent = ''
@@ -133,6 +156,7 @@ document
 	.forEach(elem => {
 		elem.addEventListener('click', async function () {
 			const classCard = (this.className).split(' ')[1]
+			let cards = null
 
 			if (!document.querySelectorAll('.player1 .slot')[0].textContent) {
 				document.querySelectorAll('.player1 .slot')[0].textContent = this.textContent
@@ -148,7 +172,6 @@ document
 				document.querySelectorAll('.player1 .slot')[1].classList.add(classCard)
 				document.querySelectorAll('.player1 .slot')[1].dataset.card = this.dataset.slot
 
-				let cards = ''
 				cards = document.querySelectorAll('.player1 .slot')[0].textContent
 				cards += document.querySelectorAll('.player1 .slot')[0].dataset.card
 				cards += document.querySelectorAll('.player1 .slot')[1].textContent
@@ -166,30 +189,83 @@ document
 			if (!document.querySelectorAll('.board_slot')[0].textContent) {
 				document.querySelectorAll('.board_slot')[0].textContent = this.textContent
 				document.querySelectorAll('.board_slot')[0].classList.add(classCard)
+				document.querySelectorAll('.board_slot')[0].dataset.card = this.dataset.slot
 				return false
 			}
 
 			if (!document.querySelectorAll('.board_slot')[1].textContent) {
 				document.querySelectorAll('.board_slot')[1].textContent = this.textContent
 				document.querySelectorAll('.board_slot')[1].classList.add(classCard)
+				document.querySelectorAll('.board_slot')[1].dataset.card = this.dataset.slot
 				return false
 			}
 
 			if (!document.querySelectorAll('.board_slot')[2].textContent) {
 				document.querySelectorAll('.board_slot')[2].textContent = this.textContent
 				document.querySelectorAll('.board_slot')[2].classList.add(classCard)
+				document.querySelectorAll('.board_slot')[2].dataset.card = this.dataset.slot
+
+				cards = document.querySelectorAll('.board_slot')[0].textContent
+				cards += document.querySelectorAll('.board_slot')[0].dataset.card
+				cards += document.querySelectorAll('.board_slot')[1].textContent
+				cards += document.querySelectorAll('.board_slot')[1].dataset.card
+				cards += document.querySelectorAll('.board_slot')[2].textContent
+				cards += document.querySelectorAll('.board_slot')[2].dataset.card
+
+				const result = await sendAjax('/4bet/api/update_board.php', {
+					hand_id: hand_id,
+					board: cards
+				});
+
+				console.log(result)
 				return false
 			}
 
 			if (!document.querySelectorAll('.board_slot')[3].textContent) {
 				document.querySelectorAll('.board_slot')[3].textContent = this.textContent
 				document.querySelectorAll('.board_slot')[3].classList.add(classCard)
+				document.querySelectorAll('.board_slot')[3].dataset.card = this.dataset.slot
+
+				cards = document.querySelectorAll('.board_slot')[0].textContent
+				cards += document.querySelectorAll('.board_slot')[0].dataset.card
+				cards += document.querySelectorAll('.board_slot')[1].textContent
+				cards += document.querySelectorAll('.board_slot')[1].dataset.card
+				cards += document.querySelectorAll('.board_slot')[2].textContent
+				cards += document.querySelectorAll('.board_slot')[2].dataset.card
+				cards += ' ' + document.querySelectorAll('.board_slot')[3].textContent
+				cards += document.querySelectorAll('.board_slot')[3].dataset.card
+
+				const result = await sendAjax('/4bet/api/update_board.php', {
+					hand_id: hand_id,
+					board: cards
+				});
+
+				console.log(result)
 				return false
 			}
 
 			if (!document.querySelectorAll('.board_slot')[4].textContent) {
 				document.querySelectorAll('.board_slot')[4].textContent = this.textContent
 				document.querySelectorAll('.board_slot')[4].classList.add(classCard)
+				document.querySelectorAll('.board_slot')[4].dataset.card = this.dataset.slot
+
+				cards = document.querySelectorAll('.board_slot')[0].textContent
+				cards += document.querySelectorAll('.board_slot')[0].dataset.card
+				cards += document.querySelectorAll('.board_slot')[1].textContent
+				cards += document.querySelectorAll('.board_slot')[1].dataset.card
+				cards += document.querySelectorAll('.board_slot')[2].textContent
+				cards += document.querySelectorAll('.board_slot')[2].dataset.card
+				cards += ' ' + document.querySelectorAll('.board_slot')[3].textContent
+				cards += document.querySelectorAll('.board_slot')[3].dataset.card
+				cards += ' ' + document.querySelectorAll('.board_slot')[4].textContent
+				cards += document.querySelectorAll('.board_slot')[4].dataset.card
+
+				const result = await sendAjax('/4bet/api/update_board.php', {
+					hand_id: hand_id,
+					board: cards
+				});
+
+				console.log(result)
 				return false
 			}
 		})
@@ -237,6 +313,7 @@ document
 			})
 
 			console.log(result)
+			showNotification('fold');
 		})
 	})
 
