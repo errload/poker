@@ -16,14 +16,11 @@ try {
 	$input = json_decode(file_get_contents('php://input'), true);
 	if (!$input) throw new Exception('Invalid JSON input');
 
-	// Валидация
-	$required = ['hero_position', 'hero_stack', 'stacks'];
+	// Валидация обязательных полей
+	$required = ['hero_position', 'hero_stack'];
 	foreach ($required as $field) {
 		if (!isset($input[$field])) throw new Exception("Missing required field: $field");
 	}
-
-	// Проверка формата стеков
-	if (!is_array($input['stacks'])) throw new Exception("Stacks must be an array");
 
 	// Начинаем транзакцию
 	$pdo->beginTransaction();
@@ -51,15 +48,14 @@ try {
 
 		// 2. Создаем новую раздачу
 		$stmt = $pdo->prepare("
-            INSERT INTO `hands` (`hero_position`, `hero_stack`, `hero_cards`, `stacks`, `is_completed`)
-            VALUES (:position, :stack, :cards, :stacks, 0)
+            INSERT INTO `hands` (`hero_position`, `hero_stack`, `hero_cards`, `is_completed`)
+            VALUES (:position, :stack, :cards, 0)
         ");
 
 		$stmt->execute([
 			':position' => $input['hero_position'],
 			':stack' => (float)$input['hero_stack'],
-			':cards' => $input['hero_cards'] ?? null,
-			':stacks' => json_encode($input['stacks'])
+			':cards' => $input['hero_cards'] ?? null
 		]);
 
 		$newHandId = $pdo->lastInsertId();

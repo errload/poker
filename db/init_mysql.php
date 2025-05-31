@@ -46,19 +46,18 @@ try {
             ) ENGINE=InnoDB DEFAULT CHARSET=".DB_CHARSET,
 
 		"hands" => "
-            CREATE TABLE IF NOT EXISTS `hands` (
-                `hand_id` INT AUTO_INCREMENT PRIMARY KEY,
-                `hero_position` VARCHAR(10) COMMENT 'Position at table (BTN, SB, BB, etc)',
-                `hero_stack` DECIMAL(15,2) COMMENT 'Hero starting stack',
-                `hero_cards` VARCHAR(10) COMMENT 'Hero cards (AhKd format)',
-                `board` VARCHAR(30) COMMENT 'Community cards (Jc7d2h 5s As format)',
-                `stacks` TEXT COMMENT 'JSON array of starting stacks',
-                `is_completed` BOOLEAN DEFAULT FALSE,
-                `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-                `updated_at` DATETIME ON UPDATE CURRENT_TIMESTAMP,
-                INDEX `idx_hand_completion` (`is_completed`),
-                INDEX `idx_hand_time` (`created_at`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=".DB_CHARSET,
+		CREATE TABLE IF NOT EXISTS `hands` (
+			`hand_id` INT AUTO_INCREMENT PRIMARY KEY,
+			`hero_position` VARCHAR(10),
+			`hero_stack` DECIMAL(15,2),
+			`hero_cards` VARCHAR(10),
+			`board` VARCHAR(30),
+			`is_completed` BOOLEAN DEFAULT FALSE,
+			`created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+			`updated_at` DATETIME ON UPDATE CURRENT_TIMESTAMP,
+			INDEX `idx_hand_completion` (`is_completed`),
+			INDEX `idx_hand_time` (`created_at`)
+		) ENGINE=InnoDB DEFAULT CHARSET=".DB_CHARSET,
 
 		"actions" => "
             CREATE TABLE IF NOT EXISTS `actions` (

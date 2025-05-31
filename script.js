@@ -50,6 +50,23 @@ const getBoardStatus = () => {
 	if (counter === 5) return 'river'
 }
 
+// update stacks
+(() => {
+	document
+		.querySelectorAll('.player .select_stack')
+		.forEach(elem => {
+			elem.addEventListener('change', async function () {
+				const howdown = await sendAjax('/4bet/api/update_stack.php', {
+					hand_id: hand_id,
+					player_id: elem.closest('.player').querySelector('.radio').value,
+					new_stack: elem.value
+				})
+
+				console.log(result)
+			})
+		})
+})()
+
 async function sendAjax(url, params) {
 	const response = await fetch(url, {
 		method: 'POST',
@@ -113,6 +130,8 @@ document
 							player_id: elem.querySelector('.radio').value,
 							cards: cards
 						})
+
+						console.log(result)
 					}
 				})
 
@@ -160,15 +179,6 @@ document
 			const result = await sendAjax('/4bet/api/new_hand_mysql.php', {
 				hero_position: document.querySelector('.player1 .player_position').textContent,
 				hero_stack: document.querySelector('.player1 .select_stack').value,
-				stacks: {
-					player2: document.querySelector('.player2 .select_stack').value,
-					player3: document.querySelector('.player3 .select_stack').value,
-					player4: document.querySelector('.player4 .select_stack').value,
-					player5: document.querySelector('.player5 .select_stack').value,
-					player6: document.querySelector('.player6 .select_stack').value,
-					player7: document.querySelector('.player7 .select_stack').value,
-					player8: document.querySelector('.player8 .select_stack').value
-				},
 				hero_cards: null
 			})
 

@@ -37,7 +37,7 @@ try {
 
 	// 1. Получаем основную информацию о раздаче
 	$handStmt = $pdo->prepare("
-        SELECT hero_position, hero_stack, hero_cards, board, is_completed, stacks 
+        SELECT hero_position, hero_stack, hero_cards, board, is_completed 
         FROM hands 
         WHERE hand_id = ?
     ");
@@ -45,11 +45,28 @@ try {
 	$handData = $handStmt->fetch();
 	if (!$handData) throw new Exception("Hand not found");
 
+	// 2. Получаем начальные стеки из ПЕРВОГО действия каждого игрока
+	$stacksStmt = $pdo->prepare("
+        SELECT 
+            a1.player_id,
+            a1.current_stack as initial_stack
+        FROM actions a1
+        JOIN (
+            SELECT player_id, MIN(sequence_num) as min_seq
+            FROM actions
+            WHERE hand_id = ?
+            GROUP BY player_id
+        ) a2 ON a1.player_id = a2.player_id AND a1.sequence_num = a2.min_seq
+        WHERE a1.hand_id = ?
+    ");
+	$stacksStmt->execute([$input['hand_id'], $input['hand_id']]);
+	$initialStacks = $stacksStmt->fetchAll(PDO::FETCH_KEY_PAIR);
+
 	// 2. Получаем активных игроков и их последние действия
 	$playersStmt = $pdo->prepare("
         SELECT 
             p.player_id, p.nickname, 
-            ROUND(p.vpip,1) as vpip, ROUND(p.pfr,1) as pfr, 
+            ROUND(p.vpip,1) as vpip, ROUND(p.pfr,1) as pfr,
             ROUND(p.af,1) as af, ROUND(p.three_bet,1) as three_bet,
             a.current_stack, a.action_type as last_action
         FROM players p
@@ -156,6 +173,7 @@ try {
 				'id' => (int)$p['player_id'],
 				'name' => $p['nickname'],
 				'stack' => round($p['current_stack'], 1),
+				'initial_stack' => round($initialStacks[$p['player_id']] ?? $p['current_stack']),
 				'stats' => [
 					'vpip' => $p['vpip'],
 					'pfr' => $p['pfr'],
@@ -188,7 +206,7 @@ try {
 	];
 
 	// Формируем запрос для ИИ
-	$content = "Ты — профессиональный покерный AI в турнире Bounty 8 max. Стадия: " . ($input['stage'] ?? 'unknown') . ".\n";
+	$content = "Ты — профессиональный покерный AI в турнире Bounty 8 max. Стадия: " . ($input['stady'] ?? 'unknown') . ".\n";
 	$content .= "Отвечай максимально коротко: действие (если рейз, то сколько) | короткое описание (буквально несколько слов).\n";
 	$content .= json_encode($analysisData, JSON_UNESCAPED_UNICODE);
 
@@ -218,6 +236,7 @@ try {
 
 	$response = [
 		'success' => true,
+		'content' => $content,
 		'data' => $apiResponse->choices[0]->message->content,
 		'analysis' => $analysisData // optional, можно убрать в продакшене
 	];
