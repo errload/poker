@@ -97,6 +97,19 @@ try {
 		$stmt->execute([$input['hand_id']]);
 		$nextSeq = $stmt->fetchColumn();
 
+		// Определяем окончательный тип действия с учетом автоматической конвертации raise→bet
+		$finalActionType = $input['action_type'];
+		if ($finalActionType === 'raise') {
+			$stmt = $pdo->prepare("
+                SELECT 1 FROM actions 
+                WHERE hand_id = ? AND street = ? 
+                AND action_type IN ('bet', 'raise', 'all-in')
+                LIMIT 1
+            ");
+			$stmt->execute([$input['hand_id'], $input['street']]);
+			$finalActionType = $stmt->fetch() ? 'raise' : 'bet';
+		}
+
 		// Вставляем действие
 		$stmt = $pdo->prepare("
             INSERT INTO actions (
@@ -108,7 +121,7 @@ try {
 			$input['hand_id'],
 			$player_id,
 			$input['street'],
-			$input['action_type'],
+			$finalActionType,
 			isset($input['amount']) ? round($input['amount'], 2) : null,
 			isset($input['current_stack']) ? round($input['current_stack'], 2) : null,
 			$nextSeq
@@ -116,7 +129,7 @@ try {
 
 		$action_id = $pdo->lastInsertId();
 
-		// Обновляем статистику
+		// Обновляем статистику (передаем исходный action_type для корректного расчета статистики)
 		updatePlayerStats($pdo, $player_id, $input['action_type'], $input['street']);
 
 		$pdo->commit();
@@ -124,7 +137,8 @@ try {
 		$response = [
 			'success' => true,
 			'action_id' => $action_id,
-			'message' => 'Действие успешно записано'
+			'message' => 'Действие успешно записано',
+			'processed_action_type' => $finalActionType // Для отладки, можно убрать в продакшене
 		];
 
 	} catch (Exception $e) {
