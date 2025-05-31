@@ -50,22 +50,22 @@ const getBoardStatus = () => {
 	if (counter === 5) return 'river'
 }
 
-// update stacks
-(() => {
-	document
-		.querySelectorAll('.player .select_stack')
-		.forEach(elem => {
-			elem.addEventListener('change', async function () {
-				const howdown = await sendAjax('/4bet/api/update_stack.php', {
-					hand_id: hand_id,
-					player_id: elem.closest('.player').querySelector('.radio').value,
-					new_stack: elem.value
-				})
-
-				console.log(result)
-			})
-		})
-})()
+// // update stacks
+// (() => {
+// 	document
+// 		.querySelectorAll('.player .select_stack')
+// 		.forEach(elem => {
+// 			elem.addEventListener('change', async function () {
+// 				const howdown = await sendAjax('/4bet/api/update_stack.php', {
+// 					hand_id: hand_id,
+// 					player_id: elem.closest('.player').querySelector('.radio').value,
+// 					new_stack: elem.value
+// 				})
+//
+// 				console.log(result)
+// 			})
+// 		})
+// })()
 
 async function sendAjax(url, params) {
 	const response = await fetch(url, {
@@ -79,7 +79,7 @@ async function sendAjax(url, params) {
 }
 
 const changeSelectStack = (elem, is_allin) => {
-	select_value = parseFloat(elem.querySelector('.select_stack').value)
+	select_value = parseFloat(elem.querySelector('.stack_cards .stack').textContent)
 
 	if (is_allin) {
 		bid_counter = select_value > bid_counter ? select_value : bid_counter
@@ -93,18 +93,18 @@ const changeSelectStack = (elem, is_allin) => {
 	return select_value
 }
 
-// add options select stacks
-document
-	.querySelectorAll('.player .select_stack')
-	.forEach(elem => {
-		for (let i = 125; i >= 0; i--) {
-			const option = document.createElement('option')
-			option.value = i
-			option.textContent = i
-			if (i === 125) option.setAttribute('selected', 'selected')
-			elem.appendChild(option)
-		}
-	})
+// // add options select stacks
+// document
+// 	.querySelectorAll('.player .select_stack')
+// 	.forEach(elem => {
+// 		for (let i = 125; i >= 0; i--) {
+// 			const option = document.createElement('option')
+// 			option.value = i
+// 			option.textContent = i
+// 			if (i === 125) option.setAttribute('selected', 'selected')
+// 			elem.appendChild(option)
+// 		}
+// 	})
 
 // click radio player
 document
@@ -178,7 +178,7 @@ document
 
 			const result = await sendAjax('/4bet/api/new_hand_mysql.php', {
 				hero_position: document.querySelector('.player1 .player_position').textContent,
-				hero_stack: document.querySelector('.player1 .select_stack').value,
+				hero_stack: document.querySelector('.stack_cards .stack').textContent,
 				hero_cards: null
 			})
 
@@ -359,6 +359,73 @@ document
 		console.log(result)
 	})
 
+// change stack
+document
+	.querySelectorAll('.player .select_stack')
+	.forEach(elem => {
+		elem.addEventListener('click', e => {
+			const player = e.target.closest('.player')
+			const overlay = document.createElement('div')
+			overlay.classList.add('popup-overlay')
+			const popup = document.createElement('div')
+			popup.classList.add('popup-window')
+
+			const addBidRaise = (sum) => {
+				const bid_raise = document.createElement('div')
+				bid_raise.classList.add('bid_raise')
+				bid_raise.textContent = sum
+				return bid_raise
+			};
+
+			const bidRows = [
+				[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+				[11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+				[21, 22, 23, 24, 25, 26, 27, 28, 29, 30],
+				[31, 32, 33, 34, 35, 36, 37, 38, 39, 40],
+				[41, 42, 43, 44, 45, 46, 47, 48, 49, 50],
+				[51, 52, 53, 54, 55, 56, 57, 58, 59, 60],
+				[61, 62, 63, 64, 65, 66, 67, 68, 69, 70],
+				[71, 72, 73, 74, 75, 76, 77, 78, 79, 80],
+				[81, 82, 83, 84, 85, 86, 87, 88, 89, 90],
+				[91, 92, 93, 94, 95, 96, 97, 98, 99, 100],
+				[101, 102, 103, 104, 105, 106, 107, 108, 109, 110],
+				[111, 112, 113, 114, 115, 116, 117, 118, 119, 120],
+				[121, 122, 123, 124, 125],
+			]
+
+			bidRows.forEach(row => {
+				const rowContainer = document.createElement('div')
+				rowContainer.classList.add('bid-row')
+				row.forEach(bid => { rowContainer.appendChild(addBidRaise(bid)) })
+				popup.appendChild(rowContainer)
+			})
+
+			overlay.appendChild(popup)
+			document.body.appendChild(overlay)
+
+			document.querySelector('.popup-overlay').addEventListener('click', e => {
+				if (!e.target.classList.contains('popup-overlay')) return false
+				document.body.removeChild(overlay)
+			})
+
+			document
+				.querySelectorAll('.bid_raise')
+				.forEach(bid_raise => {
+					bid_raise.addEventListener('click', async e => {
+						await sendAjax('/4bet/api/update_stack.php', {
+							hand_id: hand_id,
+							player_id: player.querySelector('.radio').value,
+							new_stack: e.target.textContent
+						})
+
+						player.querySelector('.stack_cards .stack').textContent = e.target.textContent
+						document.body.removeChild(overlay)
+						console.log(result)
+					})
+				})
+		})
+	})
+
 // click fold
 document
 	.querySelectorAll('.player .fold')
@@ -369,16 +436,13 @@ document
 
 			player.querySelector('.player_buttons').style.display = 'none'
 
-			// removeClassCards(player.querySelectorAll('.stack_cards .slot')[0])
-			// removeClassCards(player.querySelectorAll('.stack_cards .slot')[1])
-
 			const result = await sendAjax('/4bet/api/action_handler.php', {
 				'hand_id': hand_id,
 				'player_id': player.querySelector('.radio').value,
 				"street": getBoardStatus(),
 				'action_type': 'fold',
 				'amount': null,
-				'current_stack': player.querySelector('.select_stack').value
+				'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 
 			console.log(result)
@@ -401,7 +465,7 @@ document
 				"street": getBoardStatus(),
 				'action_type': 'call',
 				'amount': bid_counter,
-				'current_stack': player.querySelector('.select_stack').value
+				'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 
 			console.log(result)
@@ -423,7 +487,7 @@ document
 				"street": getBoardStatus(),
 				'action_type': 'check',
 				'amount': null,
-				'current_stack': player.querySelector('.select_stack').value
+				'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 
 			console.log(result)
@@ -454,11 +518,16 @@ document
 				[1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9],
 				[2, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9],
 				[3, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9],
-				[4, 4.2, 4.4, 4.6, 4.8],
-				[5, 5.2, 5.4, 5.6, 5.8],
-				[6, 6.5, 7, 7.5, 8, 8.5, 9],
-				[10, 15, 20, 25, 30, 35, 40, 45, 50],
-				[55, 60, 65, 70, 75, 80, 85, 90, 95, 100]
+				[4, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9],
+				[5, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9],
+				[6, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9],
+				[7, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9],
+				[8, 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.8, 8.8, 8.9],
+				[9, 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.9, 9.9, 9.9],
+				[10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+				[20, 22, 24, 26, 28, 30, 32, 34, 36, 38],
+				[40, 42, 44, 46, 48, 50],
+				[55, 60, 65, 70, 75, 80, 85, 90, 95],
 			]
 
 			bidRows.forEach(row => {
@@ -489,12 +558,12 @@ document
 							"street": getBoardStatus(),
 							'action_type': 'raise',
 							'amount': bid_counter,
-							'current_stack': player.querySelector('.select_stack').value
+							'current_stack': player.querySelector('.stack_cards .stack').textContent
 						})
 
 						console.log(result)
 						showNotification('raise ' + bid_counter + ' bb')
-						document.body.removeChild(overlay);
+						document.body.removeChild(overlay)
 					})
 				})
 		})
@@ -515,7 +584,7 @@ document
 				"street": getBoardStatus(),
 				'action_type': 'all-in',
 				'amount': bid_counter,
-				'current_stack': player.querySelector('.select_stack').value
+				'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 
 			console.log(result)

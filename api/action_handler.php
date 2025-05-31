@@ -26,7 +26,7 @@ try {
 	}
 
 	// Проверка для ставок/рейзов
-	if (in_array($input['action_type'], ['bet', 'raise', 'all-in']) && !isset($input['amount'])) {
+	if (in_array($input['action_type'], ['bet', 'raise', 'all-in', 'call']) && !isset($input['amount'])) {
 		throw new Exception("amount обязателен для действий типа {$input['action_type']}");
 	}
 
@@ -42,6 +42,13 @@ try {
 
 	if (isset($input['current_stack']) && (!is_numeric($input['current_stack']) || $input['current_stack'] < 0)) {
 		throw new Exception("Некорректный размер стека");
+	}
+
+	// Проверка что ставка не превышает стек
+	if (isset($input['amount']) && isset($input['current_stack']) &&
+		in_array($input['action_type'], ['bet', 'raise', 'all-in', 'call']) &&
+		$input['amount'] > $input['current_stack']) {
+		throw new Exception("Сумма ставки превышает текущий стек игрока");
 	}
 
 	// Подключение к базе данных
@@ -78,7 +85,6 @@ try {
 		$player = $stmt->fetch();
 
 		if (!$player) {
-			// Извлекаем первую цифру из ID игрока
 			preg_match('/\d/', $player_id, $matches);
 			$firstDigit = $matches[0] ?? '0';
 			$nickname = "Player{$firstDigit}";
@@ -110,6 +116,15 @@ try {
 			$finalActionType = $stmt->fetch() ? 'raise' : 'bet';
 		}
 
+		// Рассчитываем новый стек
+		$current_stack = (float)$input['current_stack'];
+		$amount = isset($input['amount']) ? (float)$input['amount'] : 0;
+
+		if (in_array($finalActionType, ['bet', 'raise', 'all-in', 'call'])) {
+			$current_stack -= $amount;
+			$current_stack = max(0, $current_stack); // Не допускаем отрицательный стек
+		}
+
 		// Вставляем действие
 		$stmt = $pdo->prepare("
             INSERT INTO actions (
@@ -122,8 +137,8 @@ try {
 			$player_id,
 			$input['street'],
 			$finalActionType,
-			isset($input['amount']) ? round($input['amount'], 2) : null,
-			isset($input['current_stack']) ? round($input['current_stack'], 2) : null,
+			isset($input['amount']) ? round($amount, 2) : null,
+			round($current_stack, 2),
 			$nextSeq
 		]);
 
@@ -138,7 +153,8 @@ try {
 			'success' => true,
 			'action_id' => $action_id,
 			'message' => 'Действие успешно записано',
-			'processed_action_type' => $finalActionType // Для отладки, можно убрать в продакшене
+			'processed_action_type' => $finalActionType,
+			'new_stack' => $current_stack
 		];
 
 	} catch (Exception $e) {

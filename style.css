@@ -182,6 +182,29 @@ label {
     margin-right: 5px;
 }
 
+.select_stack {
+    background: #228B22;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.select_stack:hover { background: #217c21; }
+
+.stack {
+    border: 1px solid #939393;
+    padding: 5px;
+    width: 50px;
+    height: 30px;
+    margin-left: 5px;
+    margin-right: 5px;
+    cursor: auto;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
 .player_buttons {
     margin-top: 10px;
     display: flex;
@@ -250,7 +273,7 @@ label {
 }
 
 .stack_cards .slot {
-    width: 40px;
+    width: 28px;
     height: 30px;
     margin-left: 2px;
     cursor: auto;
