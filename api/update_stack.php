@@ -45,10 +45,33 @@ try {
 			throw new Exception('Действия игрока не найдены');
 		}
 
-		// Начинаем пересчет стеков
+		// Проверяем первое действие
+		$firstAction = $actions[0];
 		$currentStack = $newStack;
 		$updatedActions = 0;
 
+		// Обработка первого действия, если это не чек и не фолд
+		if (!in_array($firstAction['action_type'], ['check', 'fold']) &&
+			(float)$firstAction['amount'] > $newStack) {
+			// Обновляем сумму ставки на новый стек
+			$updateFirstStmt = $pdo->prepare("
+                UPDATE actions SET amount = ?, current_stack = 0
+                WHERE hand_id = ? AND player_id = ? AND sequence_num = ?
+            ");
+			$updateFirstStmt->execute([
+				$newStack,
+				$handId,
+				$playerId,
+				$firstAction['sequence_num']
+			]);
+			$updatedActions += $updateFirstStmt->rowCount();
+			$currentStack = 0;
+
+			// Пропускаем первое действие в основном цикле, так как мы его уже обработали
+			array_shift($actions);
+		}
+
+		// Обрабатываем остальные действия
 		foreach ($actions as $action) {
 			$actionType = $action['action_type'];
 			$amount = (float)$action['amount'];
@@ -58,15 +81,15 @@ try {
 				// Для чека или фолда просто используем текущий стек
 				$newStackValue = $currentStack;
 			} elseif (in_array($actionType, ['bet', 'raise', 'call', 'all-in'])) {
-				// Для ставок отнимаем сумму ставки от текущего стека
-				$newStackValue = $currentStack - $amount;
+				// Для ставок отнимаем сумму ставки от текущего стека, но не уходим в минус
+				$newStackValue = max(0, $currentStack - $amount);
 				$currentStack = $newStackValue; // Обновляем текущий стек для следующих действий
 			} else {
-				// Для других типов действий (если есть) оставляем стек как есть
+				// Для других типов действий оставляем стек как есть
 				$newStackValue = $currentStack;
 			}
 
-			// Обновляем стек в базе данных используя hand_id, player_id и sequence_num
+			// Обновляем стек в базе данных
 			$updateStmt = $pdo->prepare("
                 UPDATE actions SET current_stack = ?
                 WHERE hand_id = ? AND player_id = ? AND sequence_num = ?
