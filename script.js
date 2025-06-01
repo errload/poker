@@ -254,6 +254,7 @@ document
 					board: cards
 				});
 
+				bid_counter = 0
 				console.log(result)
 				return false
 			}
@@ -277,6 +278,7 @@ document
 					board: cards
 				});
 
+				bid_counter = 0
 				console.log(result)
 				return false
 			}
@@ -302,6 +304,7 @@ document
 					board: cards
 				});
 
+				bid_counter = 0
 				console.log(result)
 				return false
 			}

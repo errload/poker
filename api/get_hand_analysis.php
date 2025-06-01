@@ -32,7 +32,7 @@ try {
 		]
 	);
 
-	// 1. Get hand info
+	// Get hand info
 	$handStmt = $pdo->prepare("
         SELECT hero_position, hero_stack, hero_cards, board, is_completed 
         FROM hands 
@@ -42,14 +42,11 @@ try {
 	$handData = $handStmt->fetch();
 	if (!$handData) throw new Exception("Hand not found");
 
-	// 2. Get initial stacks and positions
+	// Get initial stacks and positions
 	$stacksStmt = $pdo->prepare("
         SELECT 
             a1.player_id,
-            CASE 
-                WHEN a1.action_type IN ('check', 'fold') THEN a1.current_stack
-                ELSE a1.current_stack + COALESCE(a1.amount, 0)
-            END as initial_stack,
+            a1.current_stack + COALESCE(a1.amount, 0) as initial_stack,
             a1.position
         FROM actions a1
         JOIN (
@@ -65,7 +62,7 @@ try {
 	$initialStacks = array_column($initialData, 'initial_stack', 'player_id');
 	$positions = array_column($initialData, 'position', 'player_id');
 
-	// 3. Get active players with enhanced stats
+	// Get active players with stats
 	$playersStmt = $pdo->prepare("
         SELECT 
             p.player_id, p.nickname, 
@@ -86,7 +83,7 @@ try {
 	$playersStmt->execute([$input['hand_id'], $input['hand_id']]);
 	$players = $playersStmt->fetchAll();
 
-	// 4. Get action history
+	// Get action history
 	$actionsStmt = $pdo->prepare("
         SELECT 
             a.street, 
@@ -104,7 +101,7 @@ try {
 	$actionsStmt->execute([$input['hand_id']]);
 	$actions = $actionsStmt->fetchAll();
 
-	// Calculate pots
+	// Calculate pots and action history
 	$streetPots = ['preflop' => 0, 'flop' => 0, 'turn' => 0, 'river' => 0];
 	$currentPot = 0;
 	$actionHistory = [];
@@ -123,9 +120,8 @@ try {
 		];
 	}
 
-	// 5. Get player history with positions (increased to 20 hands)
+	// Get player history with position stats
 	foreach ($players as &$player) {
-		// Get last 20 hands with actions
 		$historyStmt = $pdo->prepare("
             SELECT 
                 h.hand_id,
@@ -157,13 +153,11 @@ try {
 		$historyStmt->execute([$player['player_id'], $input['hand_id'], $player['player_id']]);
 		$player['hist'] = $historyStmt->fetchAll();
 
-		// Calculate position-specific stats from history
+		// Calculate position-specific stats
 		$positionStats = [];
 		foreach ($player['hist'] as $hand) {
 			if (!empty($hand['acts'])) {
 				$actions = explode('|', $hand['acts']);
-
-				// Get current position from the first action
 				$firstAction = explode(':', $actions[0]);
 				$currentPosition = $firstAction[3] ?? null;
 
@@ -181,7 +175,6 @@ try {
 
 					$positionStats[$currentPosition]['hands']++;
 
-					$streetActions = [];
 					$preflopActions = [];
 					$aggressiveActions = 0;
 					$totalActions = 0;
@@ -193,11 +186,6 @@ try {
 						$amount = $parts[2];
 						$position = $parts[3];
 
-						if (!isset($streetActions[$street])) {
-							$streetActions[$street] = [];
-						}
-						$streetActions[$street][] = $actionType;
-
 						if ($street == 'p') {
 							$preflopActions[] = $actionType;
 						}
@@ -208,17 +196,17 @@ try {
 						}
 					}
 
-					// Check VPIP (any non-fold preflop action)
+					// VPIP
 					if (!empty($preflopActions) && !in_array('f', $preflopActions)) {
 						$positionStats[$currentPosition]['vpip']++;
 					}
 
-					// Check PFR (any raise preflop)
+					// PFR
 					if (in_array('r', $preflopActions) || in_array('a', $preflopActions)) {
 						$positionStats[$currentPosition]['pfr']++;
 					}
 
-					// Calculate AF for this hand
+					// AF
 					$passiveActions = $totalActions - $aggressiveActions;
 					$positionStats[$currentPosition]['af'] += ($passiveActions > 0)
 						? $aggressiveActions / $passiveActions
@@ -230,7 +218,7 @@ try {
 			}
 		}
 
-		// Calculate averages for position stats
+		// Calculate averages
 		foreach ($positionStats as $pos => &$stats) {
 			if ($stats['hands'] > 0) {
 				$stats['vpip_pct'] = round(($stats['vpip'] / $stats['hands']) * 100, 1);
@@ -243,7 +231,7 @@ try {
 	}
 	unset($player);
 
-	// Compact data for AI with enhanced stats
+	// Prepare analysis data
 	$analysisData = [
 		'i' => (int)$input['hand_id'],
 		's' => substr($input['current_street'], 0, 1),
@@ -302,7 +290,7 @@ try {
 		'a' => $actionHistory
 	];
 
-	// AI request
+	// AI request (unchanged from original)
 	$content = "Ты — профессиональный покерный AI в турнире Bounty 8 max. Стадия: " . ($input['stady'] ?? 'unknown') . ".\n";
 	$content .= "Отвечай коротко: действие (если рейз, то сколько) | короткое описание (буквально несколько слов).\n";
 	$content .= json_encode($analysisData, JSON_UNESCAPED_UNICODE);
@@ -333,7 +321,6 @@ try {
 
 	$response = [
 		'success' => true,
-		'content' => $content,
 		'data' => $apiResponse->choices[0]->message->content,
 		'analysis' => $analysisData
 	];
@@ -344,3 +331,4 @@ try {
 	if (isset($ch)) curl_close($ch);
 	echo json_encode($response, JSON_UNESCAPED_UNICODE);
 }
+?>

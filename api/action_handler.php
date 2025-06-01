@@ -8,48 +8,41 @@ $response = [
 	'message' => '',
 	'processed_action_type' => null,
 	'new_stack' => null,
-	'current_max_bet' => null,
-	'warnings' => []
+	'current_max_bet' => null
 ];
 
 try {
-	// Получаем входные данные
 	$input = json_decode(file_get_contents('php://input'), true);
 	if (!$input) {
-		$response['message'] = 'Неверный JSON-ввод';
-		echo json_encode($response);
-		exit;
+		throw new Exception('Invalid JSON input');
 	}
 
-	// Проверяем обязательные поля
+	// Validate required fields
 	$required = ['hand_id', 'player_id', 'street', 'action_type', 'position'];
-	$missingFields = [];
 	foreach ($required as $field) {
 		if (!isset($input[$field])) {
-			$missingFields[] = $field;
+			throw new Exception("Missing required field: $field");
 		}
 	}
-	if (!empty($missingFields)) {
-		$response['message'] = "Отсутствуют обязательные поля: " . implode(', ', $missingFields);
-		echo json_encode($response);
-		exit;
-	}
 
-	// Валидация данных
+	// Validate action types and positions
 	$validActions = ['fold', 'check', 'call', 'bet', 'raise', 'all-in'];
 	$validPositions = ['BTN', 'SB', 'BB', 'UTG', 'UTG+1', 'MP', 'HJ', 'CO'];
+	$validStreets = ['preflop', 'flop', 'turn', 'river'];
 
 	if (!in_array($input['action_type'], $validActions)) {
-		$response['message'] = "Недопустимый тип действия: {$input['action_type']}";
-		echo json_encode($response);
-		exit;
+		throw new Exception("Invalid action type: {$input['action_type']}");
 	}
 
 	if (!in_array($input['position'], $validPositions)) {
-		$response['warnings'][] = "Недопустимая позиция: {$input['position']}";
+		throw new Exception("Invalid position: {$input['position']}");
 	}
 
-	// Подключение к базе данных
+	if (!in_array($input['street'], $validStreets)) {
+		throw new Exception("Invalid street: {$input['street']}");
+	}
+
+	// Connect to database
 	$pdo = new PDO(
 		"mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4",
 		DB_USER,
@@ -63,49 +56,43 @@ try {
 	$pdo->beginTransaction();
 
 	try {
-		// Проверяем существование раздачи
+		// Check if hand exists
 		$stmt = $pdo->prepare("SELECT 1 FROM hands WHERE hand_id = ?");
 		$stmt->execute([$input['hand_id']]);
 		if (!$stmt->fetch()) {
-			throw new Exception("Раздача с ID {$input['hand_id']} не найдена");
+			throw new Exception("Hand not found");
 		}
 
-		// Проверяем/создаем игрока
+		// Check/create player
 		$player_id = $input['player_id'];
-		$stmt = $pdo->prepare("SELECT * FROM players WHERE player_id = ? FOR UPDATE");
+		$stmt = $pdo->prepare("SELECT 1 FROM players WHERE player_id = ?");
 		$stmt->execute([$player_id]);
-		$player = $stmt->fetch();
-
-		if (!$player) {
-			$nickname = "Player" . substr($player_id, 0, 5);
-			$stmt = $pdo->prepare("
-                INSERT INTO players 
-                (player_id, nickname, last_seen, created_at) 
-                VALUES (?, ?, NOW(), NOW())
-            ");
+		if (!$stmt->fetch()) {
+			$nickname = "Player_" . substr($player_id, 0, 5);
+			$stmt = $pdo->prepare("INSERT INTO players (player_id, nickname) VALUES (?, ?)");
 			$stmt->execute([$player_id, $nickname]);
-			$player = ['hands_played' => 0, 'vpip' => 0, 'pfr' => 0];
 		}
 
-		// Получаем следующий номер последовательности
+		// Get next sequence number
 		$stmt = $pdo->prepare("SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM actions WHERE hand_id = ?");
 		$stmt->execute([$input['hand_id']]);
 		$nextSeq = $stmt->fetchColumn();
 
-		// Получаем последнее действие игрока в этой раздаче
+		// Get last player action in this hand
 		$stmt = $pdo->prepare("
-            SELECT current_stack, amount, action_type 
+            SELECT current_stack, amount 
             FROM actions 
             WHERE hand_id = ? AND player_id = ? 
             ORDER BY sequence_num DESC 
             LIMIT 1
         ");
 		$stmt->execute([$input['hand_id'], $player_id]);
-		$lastPlayerAction = $stmt->fetch();
+		$lastAction = $stmt->fetch();
+		$current_stack = $lastAction ? (float)$lastAction['current_stack'] : (float)$input['current_stack'];
 
-		// Получаем максимальную ставку в текущей улице
+		// Get current max bet on this street
 		$stmt = $pdo->prepare("
-            SELECT COALESCE(MAX(amount), 0) as current_bet 
+            SELECT COALESCE(MAX(amount), 0) 
             FROM actions 
             WHERE hand_id = ? AND street = ?
         ");
@@ -113,126 +100,101 @@ try {
 		$currentBet = (float)$stmt->fetchColumn();
 		$response['current_max_bet'] = $currentBet;
 
-		// Устанавливаем начальный стек
-		$current_stack = isset($input['current_stack']) ? (float)$input['current_stack'] :
-			($lastPlayerAction ? (float)$lastPlayerAction['current_stack'] : 100);
-
-		// Проверяем, является ли это первым действием игрока в раздаче
+		// Check if this is player's first action in hand
 		$stmt = $pdo->prepare("SELECT COUNT(*) FROM actions WHERE hand_id = ? AND player_id = ?");
 		$stmt->execute([$input['hand_id'], $player_id]);
 		$isFirstAction = $stmt->fetchColumn() == 0;
 
-		// Обработка действий
+		// Process action
 		$amount = 0;
 		$finalActionType = $input['action_type'];
+		$isVoluntary = true;
+		$isAggressive = false;
 
-		// Логика для SB/BB только если это их первое действие в раздаче
-		if ($isFirstAction && in_array($input['position'], ['SB', 'BB'])) {
-			switch ($input['action_type']) {
-				case 'fold':
+		switch ($input['action_type']) {
+			case 'fold':
+				// Forced folds (blinds) are not voluntary
+				if ($isFirstAction && in_array($input['position'], ['SB', 'BB'])) {
+					$isVoluntary = false;
 					$amount = $input['position'] == 'SB' ? 0.5 : 1;
-					$current_stack -= $amount;
-					break;
+				}
+				break;
 
-				case 'call':
-					if ($input['position'] == 'SB' && $currentBet <= 1) {
-						$amount = 1;
-						$current_stack -= $amount;
-					} else {
-						goto regular_action;
-					}
-					break;
+			case 'check':
+				if ($currentBet > 0) {
+					throw new Exception("Cannot check when there is a bet");
+				}
+				break;
 
-				case 'check':
-					if ($input['position'] == 'BB' && $currentBet <= 1) {
-						$amount = 1;
-						$current_stack -= $amount;
-					} else {
-						goto regular_action;
-					}
-					break;
+			case 'call':
+				if (!isset($input['amount'])) {
+					throw new Exception("Call amount not specified");
+				}
+				$callAmount = (float)$input['amount'];
+				$alreadyPosted = $lastAction ? (float)$lastAction['amount'] : 0;
+				$amountToCall = max(0, $callAmount - $alreadyPosted);
 
-				default:
-					goto regular_action;
-			}
-		}
-		// Логика для всех остальных случаев
-		else {
-			regular_action:
+				if ($current_stack <= $amountToCall) {
+					$amount = $current_stack;
+					$current_stack = 0;
+					$finalActionType = 'all-in';
+				} else {
+					$amount = $amountToCall;
+					$current_stack -= $amountToCall;
+				}
+				break;
 
-			switch ($input['action_type']) {
-				case 'fold':
-				case 'check':
-					break;
+			case 'bet':
+			case 'raise':
+				if (!isset($input['amount'])) {
+					throw new Exception("Bet/raise amount not specified");
+				}
+				$betAmount = (float)$input['amount'];
 
-				case 'call':
-					if (!isset($input['amount'])) {
-						throw new Exception("Для call обязателен параметр amount");
-					}
-					$callAmount = (float)$input['amount'];
+				// Check if this is first bet on street
+				$stmt = $pdo->prepare("
+                    SELECT 1 FROM actions 
+                    WHERE hand_id = ? AND street = ? 
+                    AND action_type IN ('bet', 'raise', 'all-in')
+                    LIMIT 1
+                ");
+				$stmt->execute([$input['hand_id'], $input['street']]);
+				$isFirstBetOnStreet = !$stmt->fetch();
 
-					$alreadyPosted = $lastPlayerAction ? (float)$lastPlayerAction['amount'] : 0;
-					$amountToCall = max(0, $callAmount - $alreadyPosted);
+				// Convert raise to bet if first aggressive action on street
+				if ($isFirstBetOnStreet && $finalActionType == 'raise') {
+					$finalActionType = 'bet';
+				}
 
-					// Проверяем, хватает ли стека для колла
-					if ($current_stack <= $amountToCall) {
-						// Если не хватает - преобразуем в all-in
-						$amount = $current_stack;
-						$current_stack = 0;
-						$finalActionType = 'all-in';
-					} else {
-						// Если хватает - обычный колл
-						if ($lastPlayerAction) {
-							$current_stack = (float)$lastPlayerAction['current_stack'] - $amountToCall;
-						} else {
-							$current_stack -= $callAmount;
-						}
-						$amount = $callAmount;
-					}
-					break;
+				$isAggressive = true;
 
-				case 'bet':
-				case 'raise':
-				case 'all-in':
-					if (!isset($input['amount'])) {
-						throw new Exception("Для {$input['action_type']} обязателен параметр amount");
-					}
-					$betAmount = (float)$input['amount'];
-
-					if ($lastPlayerAction) {
-						$current_stack = (float)$lastPlayerAction['current_stack'] - $betAmount;
-					} else {
-						$current_stack -= $betAmount;
-					}
+				if ($current_stack <= $betAmount) {
+					$amount = $current_stack;
+					$current_stack = 0;
+					$finalActionType = 'all-in';
+				} else {
 					$amount = $betAmount;
+					$current_stack -= $betAmount;
+				}
+				break;
 
-					$stmt = $pdo->prepare("
-                        SELECT 1 FROM actions 
-                        WHERE hand_id = ? AND player_id = ? 
-                        AND action_type IN ('bet', 'raise', 'all-in')
-                        LIMIT 1
-                    ");
-					$stmt->execute([$input['hand_id'], $player_id]);
-					$hasPreviousBets = $stmt->fetch();
-
-					if (!$hasPreviousBets && in_array($finalActionType, ['raise', 'all-in'])) {
-						$finalActionType = 'bet';
-					}
-					break;
-			}
+			case 'all-in':
+				if (!isset($input['amount'])) {
+					throw new Exception("All-in amount not specified");
+				}
+				$amount = (float)$input['amount'];
+				$current_stack = 0;
+				$isAggressive = true;
+				break;
 		}
 
-		// Проверка стека
-		if ($current_stack < 0) {
-			throw new Exception("Недостаточно средств в стеке");
-		}
-
-		// Вставляем действие
+		// Insert action
 		$stmt = $pdo->prepare("
             INSERT INTO actions (
                 hand_id, player_id, position, street, 
-                action_type, amount, current_stack, sequence_num
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                action_type, amount, current_stack, sequence_num,
+                is_voluntary, is_aggressive, is_first_action
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
 		$stmt->execute([
 			$input['hand_id'],
@@ -240,32 +202,34 @@ try {
 			$input['position'],
 			$input['street'],
 			$finalActionType,
-			$amount > 0 ? round($amount, 2) : null,
-			round($current_stack, 2),
-			$nextSeq
+			$amount > 0 ? $amount : null,
+			$current_stack,
+			$nextSeq,
+			$isVoluntary ? 1 : 0,
+			$isAggressive ? 1 : 0,
+			$isFirstAction ? 1 : 0
 		]);
 
 		$action_id = $pdo->lastInsertId();
 
-		// Обновляем статистику игрока
-		updatePlayerStats($pdo, $player_id, $finalActionType, $input['street']);
+		// Update hand timestamp
+		$stmt = $pdo->prepare("UPDATE hands SET updated_at = NOW() WHERE hand_id = ?");
+		$stmt->execute([$input['hand_id']]);
 
 		$pdo->commit();
 
-		// Формируем успешный ответ
 		$response = [
 			'success' => true,
 			'action_id' => $action_id,
-			'message' => 'Действие успешно записано',
+			'message' => 'Action processed successfully',
 			'processed_action_type' => $finalActionType,
-			'new_stack' => round($current_stack, 2),
-			'current_max_bet' => $currentBet,
-			'warnings' => $response['warnings']
+			'new_stack' => $current_stack,
+			'current_max_bet' => $currentBet
 		];
 
 	} catch (Exception $e) {
 		$pdo->rollBack();
-		$response['message'] = $e->getMessage();
+		throw $e;
 	}
 
 } catch (Exception $e) {
@@ -273,37 +237,4 @@ try {
 }
 
 echo json_encode($response);
-
-function updatePlayerStats($pdo, $player_id, $action_type, $street) {
-	$stmt = $pdo->prepare("SELECT * FROM players WHERE player_id = ? FOR UPDATE");
-	$stmt->execute([$player_id]);
-	$player = $stmt->fetch();
-
-	if (!$player) return;
-
-	$updateFields = ['last_seen' => date('Y-m-d H:i:s')];
-	$hands_played = $player['hands_played'] ?? 0;
-
-	if ($street == 'preflop') {
-		if ($action_type != 'fold') {
-			$new_hands_played = $hands_played + 1;
-			$updateFields['hands_played'] = $new_hands_played;
-			$updateFields['vpip'] = (($player['vpip'] * $hands_played) + 1) / $new_hands_played;
-		}
-
-		if (in_array($action_type, ['raise', 'all-in'])) {
-			$new_preflop_raises = ($player['preflop_raises'] ?? 0) + 1;
-			$updateFields['preflop_raises'] = $new_preflop_raises;
-			$updateFields['pfr'] = $hands_played > 0
-				? (($player['pfr'] * $hands_played) + 1) / $hands_played
-				: 1;
-		}
-	}
-
-	if (!empty($updateFields)) {
-		$setParts = array_map(fn($f) => "$f = ?", array_keys($updateFields));
-		$sql = "UPDATE players SET " . implode(', ', $setParts) . " WHERE player_id = ?";
-		$stmt = $pdo->prepare($sql);
-		$stmt->execute([...array_values($updateFields), $player_id]);
-	}
-}
+?>
