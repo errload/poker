@@ -116,9 +116,27 @@ try {
 			$finalActionType = $stmt->fetch() ? 'raise' : 'bet';
 		}
 
+		// Получаем последнее действие игрока в этой раздаче
+		$stmt = $pdo->prepare("
+            SELECT current_stack 
+            FROM actions 
+            WHERE hand_id = ? AND player_id = ? 
+            ORDER BY sequence_num DESC 
+            LIMIT 1
+        ");
+		$stmt->execute([$input['hand_id'], $player_id]);
+		$lastAction = $stmt->fetch();
+
 		// Рассчитываем новый стек
-		$current_stack = (float)$input['current_stack'];
 		$amount = isset($input['amount']) ? (float)$input['amount'] : 0;
+
+		if ($lastAction) {
+			// Если есть предыдущие действия, берем стек из последнего действия
+			$current_stack = (float)$lastAction['current_stack'];
+		} else {
+			// Если это первое действие игрока в раздаче, берем из входных данных
+			$current_stack = (float)$input['current_stack'];
+		}
 
 		if (in_array($finalActionType, ['bet', 'raise', 'all-in', 'call'])) {
 			$current_stack -= $amount;
@@ -154,7 +172,8 @@ try {
 			'action_id' => $action_id,
 			'message' => 'Действие успешно записано',
 			'processed_action_type' => $finalActionType,
-			'new_stack' => $current_stack
+			'new_stack' => $current_stack,
+			'used_previous_stack' => $lastAction !== false
 		];
 
 	} catch (Exception $e) {

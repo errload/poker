@@ -33,7 +33,8 @@ try {
 	try {
 		// Получаем все действия игрока в раздаче в порядке их выполнения
 		$stmt = $pdo->prepare("
-            SELECT * FROM actions 
+            SELECT sequence_num, action_type, amount, current_stack 
+            FROM actions 
             WHERE hand_id = ? AND player_id = ?
             ORDER BY sequence_num ASC
         ");
@@ -44,54 +45,48 @@ try {
 			throw new Exception('Действия игрока не найдены');
 		}
 
-		// Находим индекс последнего действия
-		$lastActionIndex = count($actions) - 1;
+		// Начинаем пересчет стеков
+		$currentStack = $newStack;
+		$updatedActions = 0;
 
-		// Если нужно изменить стек последнего действия
-		if ($actions[$lastActionIndex]['current_stack'] == $newStack) {
-			$response = [
-				'success' => true,
-				'message' => 'Стек уже соответствует заданному',
-				'updated_actions' => 0
-			];
-		} else {
-			// Вычисляем разницу между новым и текущим стеком
-			$stackDiff = $newStack - $actions[$lastActionIndex]['current_stack'];
+		foreach ($actions as $action) {
+			$actionType = $action['action_type'];
+			$amount = (float)$action['amount'];
+			$sequenceNum = $action['sequence_num'];
 
-			// Обновляем стеки для всех действий
+			if (in_array($actionType, ['check', 'fold'])) {
+				// Для чека или фолда просто используем текущий стек
+				$newStackValue = $currentStack;
+			} elseif (in_array($actionType, ['bet', 'raise', 'call', 'all-in'])) {
+				// Для ставок отнимаем сумму ставки от текущего стека
+				$newStackValue = $currentStack - $amount;
+				$currentStack = $newStackValue; // Обновляем текущий стек для следующих действий
+			} else {
+				// Для других типов действий (если есть) оставляем стек как есть
+				$newStackValue = $currentStack;
+			}
+
+			// Обновляем стек в базе данных используя hand_id, player_id и sequence_num
 			$updateStmt = $pdo->prepare("
-                UPDATE actions SET current_stack = current_stack + ? 
-                WHERE hand_id = ? AND player_id = ? AND sequence_num >= ?
+                UPDATE actions SET current_stack = ?
+                WHERE hand_id = ? AND player_id = ? AND sequence_num = ?
             ");
-
-			// Находим первое действие, где игрок сделал ставку (bet/raise/call/all-in)
-			$firstBetIndex = null;
-			foreach ($actions as $index => $action) {
-				if (in_array($action['action_type'], ['bet', 'raise', 'call', 'all-in'])) {
-					$firstBetIndex = $index;
-					break;
-				}
-			}
-
-			// Если ставок не было, обновляем все действия
-			$updateFromSequence = $actions[0]['sequence_num'];
-
-			// Если ставки были, обновляем начиная с первой ставки
-			if ($firstBetIndex !== null) {
-				$updateFromSequence = $actions[$firstBetIndex]['sequence_num'];
-			}
-
-			$updateStmt->execute([$stackDiff, $handId, $playerId, $updateFromSequence]);
-			$updatedCount = $updateStmt->rowCount();
-
-			$response = [
-				'success' => true,
-				'message' => 'Стеки успешно обновлены',
-				'updated_actions' => $updatedCount,
-				'stack_diff' => $stackDiff,
-				'update_from_sequence' => $updateFromSequence
-			];
+			$updateStmt->execute([
+				$newStackValue,
+				$handId,
+				$playerId,
+				$sequenceNum
+			]);
+			$updatedActions += $updateStmt->rowCount();
 		}
+
+		$response = [
+			'success' => true,
+			'message' => 'Стеки успешно пересчитаны',
+			'updated_actions' => $updatedActions,
+			'initial_stack' => $newStack,
+			'final_stack' => $currentStack
+		];
 
 		$pdo->commit();
 

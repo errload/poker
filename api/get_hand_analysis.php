@@ -10,7 +10,6 @@ try {
 		throw new Exception('Invalid JSON input');
 	}
 
-	// Проверяем обязательные поля
 	$required = ['hand_id', 'current_street', 'hero_position'];
 	foreach ($required as $field) {
 		if (!isset($input[$field])) {
@@ -18,13 +17,11 @@ try {
 		}
 	}
 
-	// Проверяем последовательность улиц
 	$validStreets = ['preflop', 'flop', 'turn', 'river'];
 	if (!in_array($input['current_street'], $validStreets)) {
 		throw new Exception("Invalid street: " . $input['current_street']);
 	}
 
-	// Создаем подключение к БД
 	$pdo = new PDO(
 		"mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4",
 		DB_USER,
@@ -35,7 +32,7 @@ try {
 		]
 	);
 
-	// 1. Получаем основную информацию о раздаче
+	// 1. Get hand info
 	$handStmt = $pdo->prepare("
         SELECT hero_position, hero_stack, hero_cards, board, is_completed 
         FROM hands 
@@ -45,11 +42,14 @@ try {
 	$handData = $handStmt->fetch();
 	if (!$handData) throw new Exception("Hand not found");
 
-	// 2. Получаем начальные стеки из ПЕРВОГО действия каждого игрока
+	// 2. Get initial stacks
 	$stacksStmt = $pdo->prepare("
         SELECT 
             a1.player_id,
-            a1.current_stack as initial_stack
+            CASE 
+                WHEN a1.action_type IN ('check', 'fold') THEN a1.current_stack
+                ELSE a1.current_stack + COALESCE(a1.amount, 0)
+            END as initial_stack
         FROM actions a1
         JOIN (
             SELECT player_id, MIN(sequence_num) as min_seq
@@ -62,7 +62,7 @@ try {
 	$stacksStmt->execute([$input['hand_id'], $input['hand_id']]);
 	$initialStacks = $stacksStmt->fetchAll(PDO::FETCH_KEY_PAIR);
 
-	// 2. Получаем активных игроков и их последние действия
+	// 3. Get active players
 	$playersStmt = $pdo->prepare("
         SELECT 
             p.player_id, p.nickname, 
@@ -81,13 +81,13 @@ try {
 	$playersStmt->execute([$input['hand_id'], $input['hand_id']]);
 	$players = $playersStmt->fetchAll();
 
-	// 3. Получаем историю действий текущей раздачи с расчетом банка
+	// 4. Get action history
 	$actionsStmt = $pdo->prepare("
         SELECT 
             a.street, 
             SUBSTRING(a.action_type, 1, 1) as act,
             a.amount,
-            p.player_id,
+            a.player_id,
             p.nickname,
             a.sequence_num
         FROM actions a
@@ -98,32 +98,25 @@ try {
 	$actionsStmt->execute([$input['hand_id']]);
 	$actions = $actionsStmt->fetchAll();
 
-	// Рассчитываем банк для каждой улицы
-	$streetPots = [
-		'preflop' => 0,
-		'flop' => 0,
-		'turn' => 0,
-		'river' => 0
-	];
+	// Calculate pots
+	$streetPots = ['preflop' => 0, 'flop' => 0, 'turn' => 0, 'river' => 0];
 	$currentPot = 0;
 	$actionHistory = [];
 
 	foreach ($actions as $action) {
-		if ($action['amount'] > 0) {
-			$currentPot += $action['amount'];
-		}
+		if ($action['amount'] > 0) $currentPot += $action['amount'];
 		$streetPots[$action['street']] = $currentPot;
 
 		$actionHistory[] = [
-			's' => substr($action['street'], 0, 1), // street
-			'p' => (int)$action['player_id'], // player_id
-			'a' => $action['act'], // action type
-			'v' => $action['amount'] ? round($action['amount'], 1) : null, // value
-			'r' => $action['amount'] ? round($action['amount'] / $currentPot, 2) : null // ratio to pot
+			's' => substr($action['street'], 0, 1),
+			'p' => (int)$action['player_id'],
+			'a' => $action['act'],
+			'v' => $action['amount'] ? round($action['amount'], 1) : null,
+			'r' => $action['amount'] ? round($action['amount'] / $currentPot, 2) : null
 		];
 	}
 
-	// 4. Получаем сокращенную историю последних 5 рук для каждого игрока
+	// 5. Get player history
 	foreach ($players as &$player) {
 		$historyStmt = $pdo->prepare("
             SELECT 
@@ -157,54 +150,60 @@ try {
 	}
 	unset($player);
 
-	// 5. Формируем компактные данные для ИИ
+	// Compact data for AI
 	$analysisData = [
-		'id' => (int)$input['hand_id'],
-		'street' => substr($input['current_street'], 0, 1),
-		'hero' => [
-			'pos' => $handData['hero_position'],
-			'stack' => round($handData['hero_stack'], 1),
-			'cards' => $handData['hero_cards']
+		'i' => (int)$input['hand_id'],
+		's' => substr($input['current_street'], 0, 1),
+		'h' => [
+			'p' => $handData['hero_position'],
+			's' => round($handData['hero_stack'], 1),
+			'c' => $handData['hero_cards']
 		],
-		'board' => $handData['board'],
-		'pot' => $streetPots,
-		'players' => array_map(function($p) {
+		'b' => $handData['board'],
+		'p' => [
+			'pf' => $streetPots['preflop'],
+			'f' => $streetPots['flop'],
+			't' => $streetPots['turn'],
+			'r' => $streetPots['river']
+		],
+		'pl' => array_map(function($p) use ($initialStacks) {
 			return [
-				'id' => (int)$p['player_id'],
-				'name' => $p['nickname'],
-				'stack' => round($p['current_stack'], 1),
-				'initial_stack' => round($initialStacks[$p['player_id']] ?? $p['current_stack']),
-				'stats' => [
-					'vpip' => $p['vpip'],
-					'pfr' => $p['pfr'],
-					'af' => $p['af'],
-					'3b' => $p['three_bet']
+				'i' => (int)$p['player_id'],
+				'n' => $p['nickname'],
+				's' => round($p['current_stack'], 1),
+				'is' => round($initialStacks[$p['player_id']] ?? $p['current_stack']),
+				'st' => [
+					'v' => $p['vpip'],
+					'p' => $p['pfr'],
+					'a' => $p['af'],
+					't' => $p['three_bet']
 				],
-				'last' => $p['last_action'][0] ?? 'f', // last action first letter
-				'hist' => array_map(function($h) {
-					$actions = [];
+				'l' => substr($p['last_action'], 0, 1),
+				'h' => array_map(function($h) {
+					$a = [];
 					if (!empty($h['acts'])) {
 						foreach (explode('|', $h['acts']) as $act) {
 							$parts = explode(':', $act);
-							$actions[] = [
-								's' => $parts[0], // street
-								'a' => $parts[1], // action
-								'v' => $parts[2] > 0 ? (float)$parts[2] : null // value
+							$a[] = [
+								's' => $parts[0],
+								'a' => $parts[1],
+								'v' => $parts[2] > 0 ? (float)$parts[2] : null
 							];
 						}
 					}
 					return [
-						'id' => (int)$h['hand_id'],
-						'pos' => $h['pos'],
-						'cards' => $h['cards'],
-						'acts' => $actions
+						'i' => (int)$h['hand_id'],
+						'p' => $h['pos'],
+						'c' => $h['cards'],
+						'a' => $a
 					];
 				}, $p['hist'] ?? [])
 			];
 		}, $players),
-		'acts' => $actionHistory
+		'a' => $actionHistory
 	];
 
+	// AI request
 	// Формируем запрос для ИИ
 	$content = "Ты — профессиональный покерный AI в турнире Bounty 8 max. Стадия: " . ($input['stady'] ?? 'unknown') . ".\n";
 	$content .= "Отвечай максимально коротко: действие (если рейз, то сколько) | короткое описание (буквально несколько слов).\n";
