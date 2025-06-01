@@ -33,7 +33,7 @@ try {
 	try {
 		// Получаем все действия игрока в раздаче в порядке их выполнения
 		$stmt = $pdo->prepare("
-            SELECT sequence_num, action_type, amount, current_stack 
+            SELECT sequence_num, action_type, amount, current_stack, position, street
             FROM actions 
             WHERE hand_id = ? AND player_id = ?
             ORDER BY sequence_num ASC
@@ -45,62 +45,103 @@ try {
 			throw new Exception('Действия игрока не найдены');
 		}
 
-		// Проверяем первое действие
-		$firstAction = $actions[0];
 		$currentStack = $newStack;
 		$updatedActions = 0;
+		$isFirstAction = true;
+		$alreadyPosted = 0; // Сколько уже поставил игрок
 
-		// Обработка первого действия, если это не чек и не фолд
-		if (!in_array($firstAction['action_type'], ['check', 'fold']) &&
-			(float)$firstAction['amount'] > $newStack) {
-			// Обновляем сумму ставки на новый стек
-			$updateFirstStmt = $pdo->prepare("
-                UPDATE actions SET amount = ?, current_stack = 0
-                WHERE hand_id = ? AND player_id = ? AND sequence_num = ?
-            ");
-			$updateFirstStmt->execute([
-				$newStack,
-				$handId,
-				$playerId,
-				$firstAction['sequence_num']
-			]);
-			$updatedActions += $updateFirstStmt->rowCount();
-			$currentStack = 0;
-
-			// Пропускаем первое действие в основном цикле, так как мы его уже обработали
-			array_shift($actions);
-		}
-
-		// Обрабатываем остальные действия
 		foreach ($actions as $action) {
 			$actionType = $action['action_type'];
 			$amount = (float)$action['amount'];
 			$sequenceNum = $action['sequence_num'];
+			$position = $action['position'];
+			$street = $action['street'];
+			$newStackValue = $currentStack;
+			$newAmount = $amount;
 
-			if (in_array($actionType, ['check', 'fold'])) {
-				// Для чека или фолда просто используем текущий стек
-				$newStackValue = $currentStack;
-			} elseif (in_array($actionType, ['bet', 'raise', 'call', 'all-in'])) {
-				// Для ставок отнимаем сумму ставки от текущего стека, но не уходим в минус
-				$newStackValue = max(0, $currentStack - $amount);
-				$currentStack = $newStackValue; // Обновляем текущий стек для следующих действий
-			} else {
-				// Для других типов действий оставляем стек как есть
-				$newStackValue = $currentStack;
+			// Для всех действий (включая первое) вычитаем сумму из стека
+			switch ($actionType) {
+				case 'fold':
+					// Для фолда в блайндах списываем соответствующую сумму
+					if ($isFirstAction) {
+						if ($position == 'SB') {
+							$newAmount = 0.5;
+							$newStackValue = $currentStack - 0.5;
+							$alreadyPosted = 0.5;
+						} elseif ($position == 'BB') {
+							$newAmount = 1;
+							$newStackValue = $currentStack - 1;
+							$alreadyPosted = 1;
+						}
+					}
+					// Для фолда вне блайндов сумма не списывается
+					$newAmount = null;
+					break;
+
+				case 'check':
+					// Для чека в BB списываем блайнд
+					if ($isFirstAction && $position == 'BB') {
+						$newAmount = 1;
+						$newStackValue = $currentStack - 1;
+						$alreadyPosted = 1;
+					}
+					// Для других чеков сумма не списывается
+					$newAmount = null;
+					break;
+
+				case 'call':
+					if ($amount > 0) {
+						// Для SB/BB при последующих коллах вычитаем разницу между текущей ставкой и уже поставленными деньгами
+						if (in_array($position, ['SB', 'BB']) && !$isFirstAction) {
+							$amountToCall = max(0, $amount - $alreadyPosted);
+							$newStackValue = $currentStack - $amountToCall;
+							$alreadyPosted = $amount;
+						} else {
+							// Для других позиций или первого действия просто вычитаем всю сумму
+							$newStackValue = $currentStack - $amount;
+							if ($isFirstAction) {
+								if ($position == 'SB') {
+									$alreadyPosted = 1; // SB колл = полный блайнд
+								} elseif ($position == 'BB') {
+									$alreadyPosted = $amount; // BB может коллить рейз
+								}
+							}
+						}
+					}
+					break;
+
+				case 'bet':
+				case 'raise':
+				case 'all-in':
+					// Для всех ставок вычитаем полную сумму
+					if ($amount > 0) {
+						$newStackValue = $currentStack - $amount;
+					}
+					break;
 			}
 
-			// Обновляем стек в базе данных
+			// Проверяем, чтобы стек не ушел в минус
+			if ($newStackValue < 0) {
+				throw new Exception("Недостаточно средств в стеке для действия #$sequenceNum");
+			}
+
+			// Обновляем запись в базе данных
 			$updateStmt = $pdo->prepare("
-                UPDATE actions SET current_stack = ?
+                UPDATE actions 
+                SET current_stack = ?, amount = ?
                 WHERE hand_id = ? AND player_id = ? AND sequence_num = ?
             ");
 			$updateStmt->execute([
 				$newStackValue,
+				$actionType != 'fold' && $actionType != 'check' ? $newAmount : null,
 				$handId,
 				$playerId,
 				$sequenceNum
 			]);
 			$updatedActions += $updateStmt->rowCount();
+
+			$currentStack = $newStackValue;
+			$isFirstAction = false;
 		}
 
 		$response = [

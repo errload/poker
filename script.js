@@ -418,7 +418,7 @@ document
 							new_stack: e.target.textContent
 						})
 
-						player.querySelector('.stack_cards .stack').textContent = e.target.textContent
+						player.querySelector('.stack_cards .stack').textContent = result.final_stack
 						document.body.removeChild(overlay)
 						console.log(result)
 					})

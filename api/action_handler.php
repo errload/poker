@@ -91,6 +91,39 @@ try {
 		$stmt->execute([$input['hand_id']]);
 		$nextSeq = $stmt->fetchColumn();
 
+		// Проверяем, является ли это первым действием на текущей улице
+		$stmt = $pdo->prepare("SELECT COUNT(*) FROM actions WHERE hand_id = ? AND player_id = ? AND street = ?");
+		$stmt->execute([$input['hand_id'], $player_id, $input['street']]);
+		$isFirstStreetAction = $stmt->fetchColumn() == 0;
+
+		// Получаем данные первого действия на улице (если оно уже есть)
+		$firstStreetStack = null;
+		$firstStreetAmount = 0;
+		$isFirstActionBlind = false;
+		if (!$isFirstStreetAction) {
+			$stmt = $pdo->prepare("
+                SELECT current_stack, amount, position 
+                FROM actions 
+                WHERE hand_id = ? AND player_id = ? AND street = ?
+                ORDER BY sequence_num ASC 
+                LIMIT 1
+            ");
+			$stmt->execute([$input['hand_id'], $player_id, $input['street']]);
+			$firstStreetData = $stmt->fetch();
+			$firstStreetStack = $firstStreetData['current_stack'];
+			$firstStreetAmount = (float)$firstStreetData['amount'];
+			$isFirstActionBlind = in_array($firstStreetData['position'], ['SB', 'BB']);
+		}
+
+		// Получаем сумму всех amount на текущей улице (кроме текущего действия)
+		$stmt = $pdo->prepare("
+            SELECT COALESCE(SUM(amount), 0) as total_amount
+            FROM actions 
+            WHERE hand_id = ? AND player_id = ? AND street = ?
+        ");
+		$stmt->execute([$input['hand_id'], $player_id, $input['street']]);
+		$totalAmountOnStreet = (float)$stmt->fetchColumn();
+
 		// Получаем последнее действие игрока в этой раздаче
 		$stmt = $pdo->prepare("
             SELECT current_stack, amount, action_type 
@@ -111,7 +144,7 @@ try {
 		$stmt->execute([$input['hand_id'], $input['street']]);
 		$currentBet = $stmt->fetchColumn();
 
-		// Рассчитываем текущий стек
+		// Устанавливаем начальный стек
 		$current_stack = isset($input['current_stack']) ? (float)$input['current_stack'] :
 			($lastPlayerAction ? (float)$lastPlayerAction['current_stack'] : 100); // Дефолтный стек 100, если не указан
 
@@ -130,12 +163,10 @@ try {
 			if ($input['position'] == 'SB') {
 				if ($input['action_type'] == 'fold') {
 					$amount = 0.5;
-					$current_stack -= 0.5;
 					$isBlindAction = true;
 					$alreadyPosted = 0.5;
 				} elseif ($input['action_type'] == 'call') {
 					$amount = 1;
-					$current_stack -= 1;
 					$isBlindAction = true;
 					$alreadyPosted = 1;
 				}
@@ -144,12 +175,10 @@ try {
 			elseif ($input['position'] == 'BB') {
 				if ($input['action_type'] == 'fold') {
 					$amount = 1;
-					$current_stack -= 1;
 					$isBlindAction = true;
 					$alreadyPosted = 1;
 				} elseif ($input['action_type'] == 'check') {
 					$amount = 1;
-					$current_stack -= 1;
 					$isBlindAction = true;
 					$alreadyPosted = 1;
 				}
@@ -186,11 +215,9 @@ try {
 					if (in_array($input['position'], ['SB', 'BB'])) {
 						$amountToCall = max(0, $callAmount - $alreadyPosted);
 						$amount = $callAmount;
-						$current_stack -= $amountToCall;
 					} else {
 						// Для других позиций просто вычитаем всю сумму
 						$amount = $callAmount;
-						$current_stack -= $callAmount;
 					}
 					break;
 
@@ -201,10 +228,7 @@ try {
 						throw new Exception("Для {$input['action_type']} обязателен параметр amount");
 					}
 					$betAmount = (float)$input['amount'];
-
-					// Для всех позиций вычитаем полную сумму ставки
 					$amount = $betAmount;
-					$current_stack -= $betAmount;
 					break;
 			}
 		}
@@ -222,6 +246,20 @@ try {
 		$finalActionType = $input['action_type'];
 		if (!$hasPreviousBets && in_array($finalActionType, ['raise', 'all-in'])) {
 			$finalActionType = 'bet';
+		}
+
+		// Новый расчет стека с учетом блайндов
+		if ($isFirstStreetAction) {
+			// Для первого действия на улице: начальный стек - amount
+			$current_stack -= $amount;
+		} else {
+			if ($isFirstActionBlind) {
+				// Если первое действие было блайндом, не учитываем его amount при расчете
+				$current_stack = $firstStreetStack - ($totalAmountOnStreet - $firstStreetAmount + $amount);
+			} else {
+				// Для обычных действий: (первый_стек + amount_первого_действия) - сумма_всех_предыдущих - текущий_amount
+				$current_stack = ($firstStreetStack + $firstStreetAmount) - ($totalAmountOnStreet + $amount);
+			}
 		}
 
 		// Проверка стека
