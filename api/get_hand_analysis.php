@@ -50,6 +50,7 @@ try {
             ROUND(p.af,1) as af, ROUND(p.afq,1) as afq,
             ROUND(p.three_bet,1) as three_bet,
             ROUND(p.wtsd,1) as wtsd, ROUND(p.wsd,1) as wsd,
+            p.hands_played,
             a.action_type as last_action, a.position,
             (
                 SELECT COUNT(*) 
@@ -125,15 +126,15 @@ try {
 	// Добавляем расчетные метрики для каждого игрока
 	foreach ($players as &$player) {
 		// CBET статистика
-		$player['cbet_pct'] = $player['cbet_count'] > 0 ?
+		$player['cbet_pct'] = ($player['faced_cbet_count'] > 0) ?
 			round(($player['cbet_count'] / $player['faced_cbet_count']) * 100, 1) : 0;
 
 		// Fold to CBET
-		$player['fold_to_cbet_pct'] = $player['faced_cbet_count'] > 0 ?
+		$player['fold_to_cbet_pct'] = ($player['faced_cbet_count'] > 0) ?
 			round(($player['fold_to_cbet_count'] / $player['faced_cbet_count']) * 100, 1) : 0;
 
 		// Steal attempt percentage
-		$player['steal_attempt_pct'] = $player['steal_attempt_count'] > 0 ?
+		$player['steal_attempt_pct'] = ($player['hands_played'] > 0) ?
 			round(($player['steal_attempt_count'] / $player['hands_played']) * 100, 1) : 0;
 	}
 	unset($player);
@@ -211,7 +212,7 @@ try {
 			'p' => (int)$action['player_id'],
 			'a' => $action['act'],
 			'v' => $action['amount'] ? round($action['amount'], 1) : null,
-			'r' => $action['amount'] ? round($action['amount'] / $currentPot, 2) : null,
+			'r' => $action['amount'] ? round($action['amount'] / max($currentPot, 1), 2) : null,
 			'pos' => $action['position']
 		];
 	}
@@ -232,7 +233,11 @@ try {
 			't' => $streetPots['turn'],
 			'r' => $streetPots['river']
 		],
-		'pl' => array_map(function($p) {
+		'pl' => array_map(function($p) use ($reactionAnalysis) {
+			$reactionData = isset($reactionAnalysis[$p['player_id']]) ? $reactionAnalysis[$p['player_id']] : null;
+			$aggPct = $reactionData && $reactionData['total_actions'] > 0 ?
+				round($reactionData['aggressive_actions'] / $reactionData['total_actions'] * 100, 1) : 0;
+
 			return [
 				'i' => (int)$p['player_id'],
 				'n' => $p['nickname'],
@@ -250,10 +255,9 @@ try {
 					'steal' => $p['steal_attempt_pct']
 				],
 				'l' => substr($p['last_action'], 0, 1),
-				'react' => isset($reactionAnalysis[$p['player_id']]) ? [
-					'agg' => round($reactionAnalysis[$p['player_id']]['aggressive_actions'] /
-						$reactionAnalysis[$p['player_id']]['total_actions'] * 100, 1),
-					'actions' => $reactionAnalysis[$p['player_id']]['action_breakdown']
+				'react' => $reactionData ? [
+					'agg' => $aggPct,
+					'actions' => $reactionData['action_breakdown']
 				] : null
 			];
 		}, $players),
@@ -265,7 +269,7 @@ try {
 	$content .= "- CBET статистики игроков (частота контбетов и фолдов к ним)\n";
 	$content .= "- Steal-попыток с поздних позиций\n";
 	$content .= "- Реакции оппонентов на предыдущие действия героя\n";
-	$content .= "Отвечай коротко: действие (если рейз, то сколько) | обоснование (несколько слов)\n";
+	$content .= "Отвечай коротко: действие (если рейз, то сколько) | обоснование (2-3 слова)\n";
 	$content .= json_encode($analysisData, JSON_UNESCAPED_UNICODE);
 
 	$api_key = 'sk-JBDhoWZZwZSn8q2xmqmi9zETz12StFzC';

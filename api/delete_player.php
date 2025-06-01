@@ -11,7 +11,7 @@ try {
 		[
 			PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
 			PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-			PDO::ATTR_EMULATE_PREPARES => false // Важно для безопасности
+			PDO::ATTR_EMULATE_PREPARES => false
 		]
 	);
 
@@ -45,14 +45,10 @@ try {
 			exit;
 		}
 
-		// 2. Удаляем связанные данные с использованием подготовленных запросов
-		$tables = ['actions', 'showdowns'];
-		$deletedRelated = 0;
-		foreach ($tables as $table) {
-			$stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `player_id` = ?");
-			$stmt->execute([$playerId]);
-			$deletedRelated += $stmt->rowCount();
-		}
+		// 2. Удаляем связанные данные из таблицы actions
+		$stmt = $pdo->prepare("DELETE FROM `actions` WHERE `player_id` = ?");
+		$stmt->execute([$playerId]);
+		$deletedRelated = $stmt->rowCount();
 
 		// 3. Удаляем самого игрока
 		$stmt = $pdo->prepare("DELETE FROM `players` WHERE `player_id` = ?");
@@ -71,7 +67,7 @@ try {
 
 	} catch (Exception $e) {
 		$pdo->rollBack();
-		throw $e; // Перебрасываем исключение в основной блок catch
+		throw $e;
 	}
 
 } catch (PDOException $e) {
