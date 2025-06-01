@@ -78,20 +78,20 @@ async function sendAjax(url, params) {
 	return result
 }
 
-const changeSelectStack = (elem, is_allin) => {
-	select_value = parseFloat(elem.querySelector('.stack_cards .stack').textContent)
-
-	if (is_allin) {
-		bid_counter = select_value > bid_counter ? select_value : bid_counter
-		select_value = 0
-	} else {
-		select_value = Math.floor(select_value - bid_counter)
-		if (select_value < 0) select_value = 0
-	}
-
-	elem.querySelector('.select_stack').value = select_value
-	return select_value
-}
+// const changeSelectStack = (elem, is_allin) => {
+// 	select_value = parseFloat(elem.querySelector('.stack_cards .stack').textContent)
+//
+// 	if (is_allin) {
+// 		bid_counter = select_value > bid_counter ? select_value : bid_counter
+// 		select_value = 0
+// 	} else {
+// 		select_value = Math.floor(select_value - bid_counter)
+// 		if (select_value < 0) select_value = 0
+// 	}
+//
+// 	elem.querySelector('.select_stack').value = select_value
+// 	return select_value
+// }
 
 // // add options select stacks
 // document
@@ -445,6 +445,7 @@ document
 				'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 
+			player.querySelector('.stack_cards .stack').textContent = result.new_stack
 			console.log(result)
 			showNotification('fold')
 		})
@@ -456,7 +457,7 @@ document
 	.forEach(elem => {
 		elem.addEventListener('click', async function () {
 			const player = this.closest('.player')
-			changeSelectStack(player, false)
+			// changeSelectStack(player, false)
 			console.log(bid_counter)
 
 			const result = await sendAjax('/4bet/api/action_handler.php', {
@@ -468,6 +469,7 @@ document
 				'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 
+			player.querySelector('.stack_cards .stack').textContent = result.new_stack
 			console.log(result)
 			showNotification('call')
 		})
@@ -490,6 +492,7 @@ document
 				'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 
+			player.querySelector('.stack_cards .stack').textContent = result.new_stack
 			console.log(result)
 			showNotification('check')
 		})
@@ -549,8 +552,8 @@ document
 				.querySelectorAll('.bid_raise')
 				.forEach(bid_raise => {
 					bid_raise.addEventListener('click', async (e) => {
+						// changeSelectStack(player, false)
 						bid_counter = parseFloat(e.target.textContent)
-						changeSelectStack(player, false)
 
 						const result = await sendAjax('/4bet/api/action_handler.php', {
 							'hand_id': hand_id,
@@ -561,6 +564,7 @@ document
 							'current_stack': player.querySelector('.stack_cards .stack').textContent
 						})
 
+						player.querySelector('.stack_cards .stack').textContent = result.new_stack
 						console.log(result)
 						showNotification('raise ' + bid_counter + ' bb')
 						document.body.removeChild(overlay)
@@ -575,7 +579,10 @@ document
 	.forEach(elem => {
 		elem.addEventListener('click', async function () {
 			const player = this.closest('.player')
-			changeSelectStack(player, true)
+			// changeSelectStack(player, true)
+
+			let player_stack = parseFloat(player.querySelector('.stack_cards .stack').textContent)
+			bid_counter = player_stack > bid_counter ? player_stack : bid_counter
 			console.log(bid_counter)
 
 			const result = await sendAjax('/4bet/api/action_handler.php', {
@@ -587,6 +594,7 @@ document
 				'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 
+			player.querySelector('.stack_cards .stack').textContent = result.new_stack
 			console.log(result)
 			showNotification('all-in ' + bid_counter + ' bb')
 		})
