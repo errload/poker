@@ -63,7 +63,7 @@ try {
 			$sequenceNum = $action['sequence_num'];
 
 			// Проверяем условие для all-in (только для первого действия в цикле - последнего по времени)
-			if ($index === 0 && !in_array($actionType, ['fold', 'check']) && $amount > 0 && $currentStack < $amount) {
+			if ($index === 0 && $actionType !== 'check' && $amount > 0 && $currentStack < $amount) {
 				// Это последняя ставка и новый стек меньше её суммы
 				$isAllIn = true;
 				$adjustedAmount = $currentStack;
@@ -91,8 +91,8 @@ try {
 			// Рассчитываем стек для текущего действия
 			$stackForThisAction = $currentStack;
 
-			// Для всех ставок (кроме фолда и чека) добавляем сумму ставки
-			if (!in_array($actionType, ['fold', 'check']) && $amount > 0) {
+			// Для всех ставок (кроме чека) добавляем сумму ставки
+			if ($actionType !== 'check' && $amount > 0) {
 				$stackForThisAction += $amount;
 			}
 

@@ -42,14 +42,15 @@ try {
 	$handData = $handStmt->fetch();
 	if (!$handData) throw new Exception("Hand not found");
 
-	// 2. Get initial stacks
+	// 2. Get initial stacks and positions
 	$stacksStmt = $pdo->prepare("
         SELECT 
             a1.player_id,
             CASE 
                 WHEN a1.action_type IN ('check', 'fold') THEN a1.current_stack
                 ELSE a1.current_stack + COALESCE(a1.amount, 0)
-            END as initial_stack
+            END as initial_stack,
+            a1.position
         FROM actions a1
         JOIN (
             SELECT player_id, MIN(sequence_num) as min_seq
@@ -60,7 +61,9 @@ try {
         WHERE a1.hand_id = ?
     ");
 	$stacksStmt->execute([$input['hand_id'], $input['hand_id']]);
-	$initialStacks = $stacksStmt->fetchAll(PDO::FETCH_KEY_PAIR);
+	$initialData = $stacksStmt->fetchAll();
+	$initialStacks = array_column($initialData, 'initial_stack', 'player_id');
+	$positions = array_column($initialData, 'position', 'player_id');
 
 	// 3. Get active players
 	$playersStmt = $pdo->prepare("
@@ -68,7 +71,7 @@ try {
             p.player_id, p.nickname, 
             ROUND(p.vpip,1) as vpip, ROUND(p.pfr,1) as pfr,
             ROUND(p.af,1) as af, ROUND(p.three_bet,1) as three_bet,
-            a.current_stack, a.action_type as last_action
+            a.current_stack, a.action_type as last_action, a.position
         FROM players p
         JOIN actions a ON a.hand_id = ? AND a.player_id = p.player_id
         WHERE a.sequence_num = (
@@ -89,7 +92,8 @@ try {
             a.amount,
             a.player_id,
             p.nickname,
-            a.sequence_num
+            a.sequence_num,
+            a.position
         FROM actions a
         JOIN players p ON a.player_id = p.player_id
         WHERE a.hand_id = ?
@@ -112,11 +116,12 @@ try {
 			'p' => (int)$action['player_id'],
 			'a' => $action['act'],
 			'v' => $action['amount'] ? round($action['amount'], 1) : null,
-			'r' => $action['amount'] ? round($action['amount'] / $currentPot, 2) : null
+			'r' => $action['amount'] ? round($action['amount'] / $currentPot, 2) : null,
+			'pos' => $action['position']
 		];
 	}
 
-	// 5. Get player history
+	// 5. Get player history with positions
 	foreach ($players as &$player) {
 		$historyStmt = $pdo->prepare("
             SELECT 
@@ -128,7 +133,8 @@ try {
                         CONCAT(
                             SUBSTRING(a.street, 1, 1), ':', 
                             SUBSTRING(a.action_type, 1, 1), ':',
-                            IFNULL(a.amount, 0)
+                            IFNULL(a.amount, 0), ':',
+                            a.position
                         ) 
                         ORDER BY a.sequence_num SEPARATOR '|'
                     )
@@ -150,7 +156,7 @@ try {
 	}
 	unset($player);
 
-	// Compact data for AI
+	// Compact data for AI with positions
 	$analysisData = [
 		'i' => (int)$input['hand_id'],
 		's' => substr($input['current_street'], 0, 1),
@@ -166,12 +172,13 @@ try {
 			't' => $streetPots['turn'],
 			'r' => $streetPots['river']
 		],
-		'pl' => array_map(function($p) use ($initialStacks) {
+		'pl' => array_map(function($p) use ($initialStacks, $positions) {
 			return [
 				'i' => (int)$p['player_id'],
 				'n' => $p['nickname'],
 				's' => round($p['current_stack'], 1),
 				'is' => round($initialStacks[$p['player_id']] ?? $p['current_stack']),
+				'pos' => $p['position'],
 				'st' => [
 					'v' => $p['vpip'],
 					'p' => $p['pfr'],
@@ -187,7 +194,8 @@ try {
 							$a[] = [
 								's' => $parts[0],
 								'a' => $parts[1],
-								'v' => $parts[2] > 0 ? (float)$parts[2] : null
+								'v' => $parts[2] > 0 ? (float)$parts[2] : null,
+								'pos' => $parts[3]
 							];
 						}
 					}
@@ -204,9 +212,8 @@ try {
 	];
 
 	// AI request
-	// Формируем запрос для ИИ
 	$content = "Ты — профессиональный покерный AI в турнире Bounty 8 max. Стадия: " . ($input['stady'] ?? 'unknown') . ".\n";
-	$content .= "Отвечай максимально коротко: действие (если рейз, то сколько) | короткое описание (буквально несколько слов).\n";
+	$content .= "Отвечай коротко: действие (если рейз, то сколько) | короткое описание (буквально несколько слов).\n";
 	$content .= json_encode($analysisData, JSON_UNESCAPED_UNICODE);
 
 	$api_key = 'sk-JBDhoWZZwZSn8q2xmqmi9zETz12StFzC';
@@ -237,7 +244,7 @@ try {
 		'success' => true,
 		'content' => $content,
 		'data' => $apiResponse->choices[0]->message->content,
-		'analysis' => $analysisData // optional, можно убрать в продакшене
+		'analysis' => $analysisData
 	];
 
 } catch (Exception $e) {
