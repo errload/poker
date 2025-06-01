@@ -130,15 +130,15 @@ document
 							player_id: elem.querySelector('.radio').value,
 							cards: cards
 						})
-
-						console.log(result)
 					}
 				})
 
-			const howdown = await sendAjax('/4bet/api/showdown_handler.php', {
+			const showdown = await sendAjax('/4bet/api/showdown_handler.php', {
 				'hand_id': hand_id,
 				'players': players
 			})
+
+			console.log(showdown)
 
 			let radio_ID = parseInt(this.getAttribute('data-id'))
 			hand_id = null
@@ -442,6 +442,7 @@ document
 				"street": getBoardStatus(),
 				'action_type': 'fold',
 				'amount': null,
+				'position': player.querySelector('.player_position').textContent,
 				'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 
@@ -466,6 +467,7 @@ document
 				"street": getBoardStatus(),
 				'action_type': 'call',
 				'amount': bid_counter,
+				'position': player.querySelector('.player_position').textContent,
 				'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 
@@ -489,6 +491,7 @@ document
 				"street": getBoardStatus(),
 				'action_type': 'check',
 				'amount': null,
+				'position': player.querySelector('.player_position').textContent,
 				'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 
@@ -561,6 +564,7 @@ document
 							"street": getBoardStatus(),
 							'action_type': 'raise',
 							'amount': bid_counter,
+							'position': player.querySelector('.player_position').textContent,
 							'current_stack': player.querySelector('.stack_cards .stack').textContent
 						})
 
@@ -591,6 +595,7 @@ document
 				"street": getBoardStatus(),
 				'action_type': 'all-in',
 				'amount': bid_counter,
+				'position': player.querySelector('.player_position').textContent,
 				'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 

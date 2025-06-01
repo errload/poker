@@ -60,22 +60,23 @@ try {
 		) ENGINE=InnoDB DEFAULT CHARSET=".DB_CHARSET,
 
 		"actions" => "
-            CREATE TABLE IF NOT EXISTS `actions` (
-                `action_id` INT AUTO_INCREMENT PRIMARY KEY,
-                `hand_id` INT NOT NULL,
-                `player_id` VARCHAR(36) NOT NULL,
-                `street` ENUM('preflop','flop','turn','river') NOT NULL,
-                `action_type` ENUM('fold','check','call','bet','raise','all-in') NOT NULL,
-                `amount` DECIMAL(15,2) NULL COMMENT 'Bet/raise amount',
-                `current_stack` DECIMAL(15,2) NULL COMMENT 'Player stack after action',
-                `sequence_num` SMALLINT UNSIGNED NOT NULL COMMENT 'Action order in hand',
-                `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (`hand_id`) REFERENCES `hands`(`hand_id`) ON DELETE CASCADE,
-                FOREIGN KEY (`player_id`) REFERENCES `players`(`player_id`) ON DELETE CASCADE,
-                UNIQUE KEY `uk_action_sequence` (`hand_id`, `sequence_num`),
-                INDEX `idx_action_composite` (`hand_id`, `player_id`, `street`),
-                INDEX `idx_action_type` (`action_type`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=".DB_CHARSET,
+			CREATE TABLE IF NOT EXISTS `actions` (
+				`action_id` INT AUTO_INCREMENT PRIMARY KEY,
+				`hand_id` INT NOT NULL,
+				`player_id` VARCHAR(36) NOT NULL,
+				`position` ENUM('BTN','SB','BB','UTG','UTG+1','MP','HJ','CO') NOT NULL,
+				`street` ENUM('preflop','flop','turn','river') NOT NULL,
+				`action_type` ENUM('fold','check','call','bet','raise','all-in') NOT NULL,
+				`amount` DECIMAL(15,2) NULL COMMENT 'Bet/raise amount',
+				`current_stack` DECIMAL(15,2) NULL COMMENT 'Player stack after action',
+				`sequence_num` SMALLINT UNSIGNED NOT NULL COMMENT 'Action order in hand',
+				`created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+				FOREIGN KEY (`hand_id`) REFERENCES `hands`(`hand_id`) ON DELETE CASCADE,
+				FOREIGN KEY (`player_id`) REFERENCES `players`(`player_id`) ON DELETE CASCADE,
+				UNIQUE KEY `uk_action_sequence` (`hand_id`, `sequence_num`),
+				INDEX `idx_action_composite` (`hand_id`, `player_id`, `street`),
+				INDEX `idx_action_type` (`action_type`)
+			) ENGINE=InnoDB DEFAULT CHARSET=".DB_CHARSET,
 
 		"showdowns" => "
             CREATE TABLE IF NOT EXISTS `showdowns` (

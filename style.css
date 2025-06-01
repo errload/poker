@@ -203,6 +203,7 @@ label {
     display: flex;
     justify-content: center;
     align-items: center;
+    font-weight: bold;
 }
 
 .player_buttons {
