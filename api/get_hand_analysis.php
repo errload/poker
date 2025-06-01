@@ -65,12 +65,14 @@ try {
 	$initialStacks = array_column($initialData, 'initial_stack', 'player_id');
 	$positions = array_column($initialData, 'position', 'player_id');
 
-	// 3. Get active players
+	// 3. Get active players with enhanced stats
 	$playersStmt = $pdo->prepare("
         SELECT 
             p.player_id, p.nickname, 
             ROUND(p.vpip,1) as vpip, ROUND(p.pfr,1) as pfr,
-            ROUND(p.af,1) as af, ROUND(p.three_bet,1) as three_bet,
+            ROUND(p.af,1) as af, ROUND(p.afq,1) as afq,
+            ROUND(p.three_bet,1) as three_bet,
+            ROUND(p.wtsd,1) as wtsd, ROUND(p.wsd,1) as wsd,
             a.current_stack, a.action_type as last_action, a.position
         FROM players p
         JOIN actions a ON a.hand_id = ? AND a.player_id = p.player_id
@@ -121,8 +123,9 @@ try {
 		];
 	}
 
-	// 5. Get player history with positions
+	// 5. Get player history with positions (increased to 20 hands)
 	foreach ($players as &$player) {
+		// Get last 20 hands with actions
 		$historyStmt = $pdo->prepare("
             SELECT 
                 h.hand_id,
@@ -149,14 +152,98 @@ try {
                 WHERE a.hand_id = h.hand_id AND a.player_id = ?
             )
             ORDER BY h.hand_id DESC
-            LIMIT 5
+            LIMIT 20
         ");
 		$historyStmt->execute([$player['player_id'], $input['hand_id'], $player['player_id']]);
 		$player['hist'] = $historyStmt->fetchAll();
+
+		// Calculate position-specific stats from history
+		$positionStats = [];
+		foreach ($player['hist'] as $hand) {
+			if (!empty($hand['acts'])) {
+				$actions = explode('|', $hand['acts']);
+
+				// Get current position from the first action
+				$firstAction = explode(':', $actions[0]);
+				$currentPosition = $firstAction[3] ?? null;
+
+				if ($currentPosition) {
+					if (!isset($positionStats[$currentPosition])) {
+						$positionStats[$currentPosition] = [
+							'hands' => 0,
+							'vpip' => 0,
+							'pfr' => 0,
+							'af' => 0,
+							'actions' => 0,
+							'aggressive_actions' => 0
+						];
+					}
+
+					$positionStats[$currentPosition]['hands']++;
+
+					$streetActions = [];
+					$preflopActions = [];
+					$aggressiveActions = 0;
+					$totalActions = 0;
+
+					foreach ($actions as $actionStr) {
+						$parts = explode(':', $actionStr);
+						$street = $parts[0];
+						$actionType = $parts[1];
+						$amount = $parts[2];
+						$position = $parts[3];
+
+						if (!isset($streetActions[$street])) {
+							$streetActions[$street] = [];
+						}
+						$streetActions[$street][] = $actionType;
+
+						if ($street == 'p') {
+							$preflopActions[] = $actionType;
+						}
+
+						$totalActions++;
+						if (in_array($actionType, ['b', 'r', 'a'])) {
+							$aggressiveActions++;
+						}
+					}
+
+					// Check VPIP (any non-fold preflop action)
+					if (!empty($preflopActions) && !in_array('f', $preflopActions)) {
+						$positionStats[$currentPosition]['vpip']++;
+					}
+
+					// Check PFR (any raise preflop)
+					if (in_array('r', $preflopActions) || in_array('a', $preflopActions)) {
+						$positionStats[$currentPosition]['pfr']++;
+					}
+
+					// Calculate AF for this hand
+					$passiveActions = $totalActions - $aggressiveActions;
+					$positionStats[$currentPosition]['af'] += ($passiveActions > 0)
+						? $aggressiveActions / $passiveActions
+						: 0;
+
+					$positionStats[$currentPosition]['actions'] += $totalActions;
+					$positionStats[$currentPosition]['aggressive_actions'] += $aggressiveActions;
+				}
+			}
+		}
+
+		// Calculate averages for position stats
+		foreach ($positionStats as $pos => &$stats) {
+			if ($stats['hands'] > 0) {
+				$stats['vpip_pct'] = round(($stats['vpip'] / $stats['hands']) * 100, 1);
+				$stats['pfr_pct'] = round(($stats['pfr'] / $stats['hands']) * 100, 1);
+				$stats['af'] = round($stats['af'] / $stats['hands'], 1);
+			}
+		}
+
+		$player['position_stats'] = $positionStats;
 	}
 	unset($player);
 
-	// Compact data for AI with positions
+	// Compact data for AI with enhanced stats
 	$analysisData = [
 		'i' => (int)$input['hand_id'],
 		's' => substr($input['current_street'], 0, 1),
@@ -183,7 +270,10 @@ try {
 					'v' => $p['vpip'],
 					'p' => $p['pfr'],
 					'a' => $p['af'],
-					't' => $p['three_bet']
+					'aq' => $p['afq'],
+					't' => $p['three_bet'],
+					'wtsd' => $p['wtsd'],
+					'wsd' => $p['wsd']
 				],
 				'l' => substr($p['last_action'], 0, 1),
 				'h' => array_map(function($h) {
@@ -205,7 +295,8 @@ try {
 						'c' => $h['cards'],
 						'a' => $a
 					];
-				}, $p['hist'] ?? [])
+				}, $p['hist'] ?? []),
+				'pos_stats' => $p['position_stats']
 			];
 		}, $players),
 		'a' => $actionHistory
