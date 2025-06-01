@@ -14,19 +14,19 @@ try {
 	);
 
 	$input = json_decode(file_get_contents('php://input'), true);
-	if (!$input) throw new Exception('Invalid JSON input');
+	if (!$input) throw new Exception('Неверный JSON-ввод');
 
-	// Валидация обязательных полей
+	// Проверяем обязательные поля
 	$required = ['hero_position', 'hero_stack'];
 	foreach ($required as $field) {
-		if (!isset($input[$field])) throw new Exception("Missing required field: $field");
+		if (!isset($input[$field])) throw new Exception("Отсутствует обязательное поле: $field");
 	}
 
 	// Начинаем транзакцию
 	$pdo->beginTransaction();
 
 	try {
-		// 1. Находим и завершаем предыдущую активную раздачу (если есть)
+		// 1. Завершаем предыдущую активную раздачу (если есть)
 		$stmt = $pdo->prepare("
             SELECT hand_id FROM hands 
             WHERE is_completed = 0 

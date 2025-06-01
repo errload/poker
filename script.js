@@ -114,32 +114,32 @@ document
 			let players = []
 			document.querySelector('.line_result').textContent = ''
 
-			document
-				.querySelectorAll('.player')
-				.forEach(elem => {
-					if (elem.querySelectorAll('.slot')[0].textContent && elem.querySelectorAll('.slot')[1].textContent) {
-						let cards = ''
-						let player_id = parseInt(elem.querySelector('.radio').value)
-						if (player_id === 111) return
+			// document
+			// 	.querySelectorAll('.player')
+			// 	.forEach(elem => {
+			// 		if (elem.querySelectorAll('.slot')[0].textContent && elem.querySelectorAll('.slot')[1].textContent) {
+			// 			let cards = ''
+			// 			let player_id = parseInt(elem.querySelector('.radio').value)
+			// 			if (player_id === 111) return
+			//
+			// 			cards += elem.querySelectorAll('.slot')[0].textContent
+			// 			cards += elem.querySelectorAll('.slot')[0].dataset.card
+			// 			cards += elem.querySelectorAll('.slot')[1].textContent
+			// 			cards += elem.querySelectorAll('.slot')[1].dataset.card
+			//
+			// 			players.push({
+			// 				player_id: elem.querySelector('.radio').value,
+			// 				cards: cards
+			// 			})
+			// 		}
+			// 	})
+			//
+			// const showdown = await sendAjax('/4bet/api/showdown_handler.php', {
+			// 	'hand_id': hand_id,
+			// 	'players': players
+			// })
 
-						cards += elem.querySelectorAll('.slot')[0].textContent
-						cards += elem.querySelectorAll('.slot')[0].dataset.card
-						cards += elem.querySelectorAll('.slot')[1].textContent
-						cards += elem.querySelectorAll('.slot')[1].dataset.card
-
-						players.push({
-							player_id: elem.querySelector('.radio').value,
-							cards: cards
-						})
-					}
-				})
-
-			const showdown = await sendAjax('/4bet/api/showdown_handler.php', {
-				'hand_id': hand_id,
-				'players': players
-			})
-
-			console.log(showdown)
+			// console.log(showdown)
 
 			let radio_ID = parseInt(this.getAttribute('data-id'))
 			hand_id = null
@@ -422,7 +422,7 @@ document
 							new_stack: e.target.textContent
 						})
 
-						player.querySelector('.stack_cards .stack').textContent = result.final_stack
+						player.querySelector('.stack_cards .stack').textContent = result.updated_stack
 						document.body.removeChild(overlay)
 						console.log(result)
 					})
@@ -450,7 +450,7 @@ document
 				'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 
-			player.querySelector('.stack_cards .stack').textContent = result.new_stack
+			// player.querySelector('.stack_cards .stack').textContent = result.new_stack
 			console.log(result)
 			showNotification('fold')
 		})
@@ -475,7 +475,7 @@ document
 				'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 
-			player.querySelector('.stack_cards .stack').textContent = result.new_stack
+			// player.querySelector('.stack_cards .stack').textContent = result.new_stack
 			console.log(result)
 			showNotification('call')
 		})
@@ -499,7 +499,7 @@ document
 				'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 
-			player.querySelector('.stack_cards .stack').textContent = result.new_stack
+			// player.querySelector('.stack_cards .stack').textContent = result.new_stack
 			console.log(result)
 			showNotification('check')
 		})
@@ -572,7 +572,7 @@ document
 							'current_stack': player.querySelector('.stack_cards .stack').textContent
 						})
 
-						player.querySelector('.stack_cards .stack').textContent = result.new_stack
+						// player.querySelector('.stack_cards .stack').textContent = result.new_stack
 						console.log(result)
 						showNotification('raise ' + bid_counter + ' bb')
 						document.body.removeChild(overlay)
@@ -603,7 +603,7 @@ document
 				'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 
-			player.querySelector('.stack_cards .stack').textContent = result.new_stack
+			// player.querySelector('.stack_cards .stack').textContent = result.new_stack
 			console.log(result)
 			showNotification('all-in ' + bid_counter + ' bb')
 		})

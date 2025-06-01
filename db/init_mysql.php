@@ -13,13 +13,13 @@ try {
 		]
 	);
 
-	// Create database
+	// Создаем базу данных
 	$pdo->exec("CREATE DATABASE IF NOT EXISTS `".DB_NAME."` 
                 CHARACTER SET ".DB_CHARSET." 
                 COLLATE ".DB_CHARSET."_unicode_ci");
 	$pdo->exec("USE `".DB_NAME."`");
 
-	// Tables structure
+	// Структура таблиц
 	$tables = [
 		"players" => "
             CREATE TABLE IF NOT EXISTS `players` (
@@ -66,7 +66,6 @@ try {
                 `street` ENUM('preflop','flop','turn','river') NOT NULL,
                 `action_type` ENUM('fold','check','call','bet','raise','all-in') NOT NULL,
                 `amount` DECIMAL(15,2) NULL,
-                `current_stack` DECIMAL(15,2) NULL,
                 `sequence_num` SMALLINT UNSIGNED NOT NULL,
                 `is_voluntary` BOOLEAN DEFAULT TRUE,
                 `is_aggressive` BOOLEAN DEFAULT FALSE,
@@ -77,30 +76,16 @@ try {
                 UNIQUE KEY `uk_action_sequence` (`hand_id`, `sequence_num`),
                 INDEX `idx_action_composite` (`hand_id`, `player_id`, `street`),
                 INDEX `idx_action_type` (`action_type`)
-            ) ENGINE=InnoDB DEFAULT CHARSET=".DB_CHARSET,
-
-		"showdowns" => "
-            CREATE TABLE IF NOT EXISTS `showdowns` (
-                `showdown_id` INT AUTO_INCREMENT PRIMARY KEY,
-                `hand_id` INT NOT NULL,
-                `player_id` VARCHAR(36) NOT NULL,
-                `cards` VARCHAR(10) NOT NULL,
-                `won` BOOLEAN DEFAULT FALSE,
-                `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (`hand_id`) REFERENCES `hands`(`hand_id`) ON DELETE CASCADE,
-                FOREIGN KEY (`player_id`) REFERENCES `players`(`player_id`) ON DELETE CASCADE,
-                UNIQUE KEY `uk_showdown_player` (`hand_id`, `player_id`),
-                INDEX `idx_showdown_hand` (`hand_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=".DB_CHARSET
 	];
 
-	// Create tables
+	// Создаем таблицы
 	foreach ($tables as $name => $sql) {
 		$pdo->exec($sql);
-		echo "Table '$name' created successfully\n";
+		echo "Таблица '$name' успешно создана\n";
 	}
 
-	// Create triggers for stats updates
+	// Триггеры для обновления статистики
 	$triggers = [
 		"after_action_insert" => "
             CREATE TRIGGER after_action_insert
@@ -108,19 +93,16 @@ try {
             FOR EACH ROW
             BEGIN
                 DECLARE v_hands_played INT;
-                DECLARE v_showdowns INT;
-                DECLARE v_won_showdowns INT;
                 
-                -- Update last seen
+                -- Обновляем время последней активности
                 UPDATE players SET last_seen = NOW() WHERE player_id = NEW.player_id;
                 
-                -- Get current stats
-                SELECT hands_played, showdowns, 
-                       (showdowns * wsd / 100) INTO v_hands_played, v_showdowns, v_won_showdowns
+                -- Получаем текущее количество сыгранных рук
+                SELECT hands_played INTO v_hands_played
                 FROM players 
                 WHERE player_id = NEW.player_id;
                 
-                -- Update VPIP for voluntary preflop actions
+                -- Обновляем VPIP для добровольных действий на префлопе
                 IF NEW.street = 'preflop' AND NEW.is_voluntary AND NOT EXISTS (
                     SELECT 1 FROM actions 
                     WHERE hand_id = NEW.hand_id AND player_id = NEW.player_id 
@@ -132,7 +114,7 @@ try {
                     WHERE player_id = NEW.player_id;
                 END IF;
                 
-                -- Update PFR for first aggressive preflop action
+                -- Обновляем PFR для первого агрессивного действия на префлопе
                 IF NEW.street = 'preflop' AND NEW.is_aggressive AND NOT EXISTS (
                     SELECT 1 FROM actions 
                     WHERE hand_id = NEW.hand_id AND player_id = NEW.player_id 
@@ -145,7 +127,7 @@ try {
                     WHERE player_id = NEW.player_id;
                 END IF;
                 
-                -- Update aggression stats
+                -- Обновляем агрессивные/пассивные действия
                 IF NEW.is_aggressive THEN
                     UPDATE players 
                     SET aggressive_actions = aggressive_actions + 1
@@ -156,7 +138,7 @@ try {
                     WHERE player_id = NEW.player_id;
                 END IF;
                 
-                -- Update AF and AFq
+                -- Обновляем AF и AFq
                 UPDATE players 
                 SET af = IF(passive_actions > 0, aggressive_actions / passive_actions, 
                            IF(aggressive_actions > 0, 99, 0)),
@@ -170,15 +152,15 @@ try {
 		try {
 			$pdo->exec("DROP TRIGGER IF EXISTS $name");
 			$pdo->exec($sql);
-			echo "Trigger '$name' created successfully\n";
+			echo "Триггер '$name' успешно создан\n";
 		} catch (PDOException $e) {
-			echo "Warning: Could not create trigger '$name': ".$e->getMessage()."\n";
+			echo "Предупреждение: Не удалось создать триггер '$name': ".$e->getMessage()."\n";
 		}
 	}
 
-	echo "Database initialization completed successfully!\n";
+	echo "Инициализация базы данных успешно завершена!\n";
 
 } catch (PDOException $e) {
-	die("Database error: " . $e->getMessage());
+	die("Ошибка базы данных: " . $e->getMessage());
 }
 ?>
