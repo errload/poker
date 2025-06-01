@@ -412,7 +412,7 @@ document
 				.querySelectorAll('.bid_raise')
 				.forEach(bid_raise => {
 					bid_raise.addEventListener('click', async e => {
-						await sendAjax('/4bet/api/update_stack.php', {
+						const result = await sendAjax('/4bet/api/update_stack.php', {
 							hand_id: hand_id,
 							player_id: player.querySelector('.radio').value,
 							new_stack: e.target.textContent
