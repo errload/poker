@@ -103,18 +103,25 @@ try {
 		$stmt->execute([$input['hand_id']]);
 		$nextSeq = $stmt->fetchColumn();
 
-		// Определяем окончательный тип действия с учетом автоматической конвертации raise→bet
+		// Определяем окончательный тип действия
 		$finalActionType = $input['action_type'];
-		if ($finalActionType === 'raise') {
-			$stmt = $pdo->prepare("
-                SELECT 1 FROM actions 
-                WHERE hand_id = ? AND street = ? 
-                AND action_type IN ('bet', 'raise', 'all-in')
-                LIMIT 1
-            ");
-			$stmt->execute([$input['hand_id'], $input['street']]);
-			$finalActionType = $stmt->fetch() ? 'raise' : 'bet';
+
+		// Проверяем, есть ли у игрока предыдущие ставки в этой раздаче
+		$stmt = $pdo->prepare("
+            SELECT 1 FROM actions 
+            WHERE hand_id = ? AND player_id = ? 
+            AND action_type IN ('bet', 'raise', 'all-in')
+            LIMIT 1
+        ");
+		$stmt->execute([$input['hand_id'], $player_id]);
+		$hasPreviousBets = $stmt->fetch();
+
+		// Если это первая ставка игрока в раздаче и это не чек/фолд, то делаем bet
+		if (!$hasPreviousBets && in_array($finalActionType, ['raise', 'all-in'])) {
+			$finalActionType = 'bet';
 		}
+		// Если это не первая ставка и был 'bet', то оставляем как есть (raise или all-in)
+		// Для check, fold, call оставляем как есть
 
 		// Получаем последнее действие игрока в этой раздаче
 		$stmt = $pdo->prepare("
