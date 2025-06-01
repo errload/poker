@@ -589,23 +589,90 @@ document
 			const player = this.closest('.player')
 			// changeSelectStack(player, true)
 
-			let player_stack = parseFloat(player.querySelector('.stack_cards .stack').textContent)
-			bid_counter = player_stack > bid_counter ? player_stack : bid_counter
-			console.log(bid_counter)
+			const overlay = document.createElement('div')
+			overlay.classList.add('popup-overlay')
+			const popup = document.createElement('div')
+			popup.classList.add('popup-window')
 
-			const result = await sendAjax('/4bet/api/action_handler.php', {
-				'hand_id': hand_id,
-				'player_id': player.querySelector('.radio').value,
-				"street": getBoardStatus(),
-				'action_type': 'all-in',
-				'amount': bid_counter,
-				'position': player.querySelector('.player_position').textContent,
-				'current_stack': player.querySelector('.stack_cards .stack').textContent
+			const addBidRaise = (sum) => {
+				const bid_raise = document.createElement('div')
+				bid_raise.classList.add('bid_raise')
+				bid_raise.textContent = sum
+				return bid_raise
+			};
+
+			const bidRows = [
+				[1, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9],
+				[2, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9],
+				[3, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9],
+				[4, 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9],
+				[5, 5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9],
+				[6, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9],
+				[7, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9],
+				[8, 8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.8, 8.8, 8.9],
+				[9, 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.9, 9.9, 9.9],
+				[10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+				[20, 22, 24, 26, 28, 30, 32, 34, 36, 38],
+				[40, 42, 44, 46, 48, 50],
+				[55, 60, 65, 70, 75, 80, 85, 90, 95],
+			]
+
+			bidRows.forEach(row => {
+				const rowContainer = document.createElement('div')
+				rowContainer.classList.add('bid-row')
+				row.forEach(bid => { rowContainer.appendChild(addBidRaise(bid)) })
+				popup.appendChild(rowContainer)
 			})
 
-			// player.querySelector('.stack_cards .stack').textContent = result.new_stack
-			console.log(result)
-			showNotification('all-in ' + bid_counter + ' bb')
+			overlay.appendChild(popup)
+			document.body.appendChild(overlay)
+
+			document.querySelector('.popup-overlay').addEventListener('click', e => {
+				if (!e.target.classList.contains('popup-overlay')) return false
+				document.body.removeChild(overlay)
+			})
+
+			document
+				.querySelectorAll('.bid_raise')
+				.forEach(bid_raise => {
+					bid_raise.addEventListener('click', async (e) => {
+						// changeSelectStack(player, false)
+						bid_counter = parseFloat(e.target.textContent)
+
+						const result = await sendAjax('/4bet/api/action_handler.php', {
+							'hand_id': hand_id,
+							'player_id': player.querySelector('.radio').value,
+							"street": getBoardStatus(),
+							'action_type': 'all-in',
+								'amount': bid_counter,
+							'position': player.querySelector('.player_position').textContent,
+							'current_stack': player.querySelector('.stack_cards .stack').textContent
+						})
+
+						// player.querySelector('.stack_cards .stack').textContent = result.new_stack
+						console.log(result)
+						showNotification('all-in ' + bid_counter + ' bb')
+						document.body.removeChild(overlay)
+					})
+				})
+
+			// let player_stack = parseFloat(player.querySelector('.stack_cards .stack').textContent)
+			// bid_counter = player_stack > bid_counter ? player_stack : bid_counter
+			// console.log(bid_counter)
+			//
+			// const result = await sendAjax('/4bet/api/action_handler.php', {
+			// 	'hand_id': hand_id,
+			// 	'player_id': player.querySelector('.radio').value,
+			// 	"street": getBoardStatus(),
+			// 	'action_type': 'all-in',
+			// 	'amount': bid_counter,
+			// 	'position': player.querySelector('.player_position').textContent,
+			// 	'current_stack': player.querySelector('.stack_cards .stack').textContent
+			// })
+			//
+			// // player.querySelector('.stack_cards .stack').textContent = result.new_stack
+			// console.log(result)
+			// showNotification('all-in ' + bid_counter + ' bb')
 		})
 	})
 
