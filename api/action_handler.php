@@ -8,6 +8,7 @@ $response = [
 	'message' => '',
 	'processed_action_type' => null,
 	'new_stack' => null,
+	'current_max_bet' => null, // Добавлено новое поле
 	'warnings' => []
 ];
 
@@ -91,39 +92,6 @@ try {
 		$stmt->execute([$input['hand_id']]);
 		$nextSeq = $stmt->fetchColumn();
 
-		// Проверяем, является ли это первым действием на текущей улице
-		$stmt = $pdo->prepare("SELECT COUNT(*) FROM actions WHERE hand_id = ? AND player_id = ? AND street = ?");
-		$stmt->execute([$input['hand_id'], $player_id, $input['street']]);
-		$isFirstStreetAction = $stmt->fetchColumn() == 0;
-
-		// Получаем данные первого действия на улице (если оно уже есть)
-		$firstStreetStack = null;
-		$firstStreetAmount = 0;
-		$isFirstActionBlind = false;
-		if (!$isFirstStreetAction) {
-			$stmt = $pdo->prepare("
-                SELECT current_stack, amount, position 
-                FROM actions 
-                WHERE hand_id = ? AND player_id = ? AND street = ?
-                ORDER BY sequence_num ASC 
-                LIMIT 1
-            ");
-			$stmt->execute([$input['hand_id'], $player_id, $input['street']]);
-			$firstStreetData = $stmt->fetch();
-			$firstStreetStack = $firstStreetData['current_stack'];
-			$firstStreetAmount = (float)$firstStreetData['amount'];
-			$isFirstActionBlind = in_array($firstStreetData['position'], ['SB', 'BB']);
-		}
-
-		// Получаем сумму всех amount на текущей улице (кроме текущего действия)
-		$stmt = $pdo->prepare("
-            SELECT COALESCE(SUM(amount), 0) as total_amount
-            FROM actions 
-            WHERE hand_id = ? AND player_id = ? AND street = ?
-        ");
-		$stmt->execute([$input['hand_id'], $player_id, $input['street']]);
-		$totalAmountOnStreet = (float)$stmt->fetchColumn();
-
 		// Получаем последнее действие игрока в этой раздаче
 		$stmt = $pdo->prepare("
             SELECT current_stack, amount, action_type 
@@ -135,74 +103,66 @@ try {
 		$stmt->execute([$input['hand_id'], $player_id]);
 		$lastPlayerAction = $stmt->fetch();
 
-		// Получаем максимальную ставку в текущей улице
+		// Получаем максимальную ставку в текущей улице (обновляем запрос для получения current_max_bet)
 		$stmt = $pdo->prepare("
             SELECT COALESCE(MAX(amount), 0) as current_bet 
             FROM actions 
             WHERE hand_id = ? AND street = ?
         ");
 		$stmt->execute([$input['hand_id'], $input['street']]);
-		$currentBet = $stmt->fetchColumn();
+		$currentBet = (float)$stmt->fetchColumn();
+		$response['current_max_bet'] = $currentBet; // Добавляем в ответ
 
 		// Устанавливаем начальный стек
 		$current_stack = isset($input['current_stack']) ? (float)$input['current_stack'] :
-			($lastPlayerAction ? (float)$lastPlayerAction['current_stack'] : 100); // Дефолтный стек 100, если не указан
+			($lastPlayerAction ? (float)$lastPlayerAction['current_stack'] : 100);
 
 		// Проверяем, является ли это первым действием игрока в раздаче
 		$stmt = $pdo->prepare("SELECT COUNT(*) FROM actions WHERE hand_id = ? AND player_id = ?");
 		$stmt->execute([$input['hand_id'], $player_id]);
 		$isFirstAction = $stmt->fetchColumn() == 0;
 
-		// Обработка блайндов и ставок
+		// Обработка действий
 		$amount = 0;
-		$isBlindAction = false;
-		$alreadyPosted = 0; // Сколько уже поставил игрок в этой раздаче
+		$finalActionType = $input['action_type'];
 
-		if ($isFirstAction) {
-			// Первое действие для SB
-			if ($input['position'] == 'SB') {
-				if ($input['action_type'] == 'fold') {
-					$amount = 0.5;
-					$isBlindAction = true;
-					$alreadyPosted = 0.5;
-				} elseif ($input['action_type'] == 'call') {
-					$amount = 1;
-					$isBlindAction = true;
-					$alreadyPosted = 1;
-				}
-			}
-			// Первое действие для BB
-			elseif ($input['position'] == 'BB') {
-				if ($input['action_type'] == 'fold') {
-					$amount = 1;
-					$isBlindAction = true;
-					$alreadyPosted = 1;
-				} elseif ($input['action_type'] == 'check') {
-					$amount = 1;
-					$isBlindAction = true;
-					$alreadyPosted = 1;
-				}
-			}
-		} else {
-			// Для последующих действий получаем сколько уже поставил игрок
-			$stmt = $pdo->prepare("
-                SELECT COALESCE(SUM(amount), 0) as total_posted 
-                FROM actions 
-                WHERE hand_id = ? AND player_id = ?
-            ");
-			$stmt->execute([$input['hand_id'], $player_id]);
-			$alreadyPosted = (float)$stmt->fetchColumn();
-		}
-
-		// Обработка не-блайнд действий
-		if (!$isBlindAction) {
+		// Логика для SB/BB только если это их первое действие в раздаче
+		if ($isFirstAction && in_array($input['position'], ['SB', 'BB'])) {
 			switch ($input['action_type']) {
 				case 'fold':
-					// Для фолда ничего не меняем
+					$amount = $input['position'] == 'SB' ? 0.5 : 1;
+					$current_stack -= $amount;
+					break;
+
+				case 'call':
+					if ($input['position'] == 'SB' && $currentBet <= 1) {
+						$amount = 1;
+						$current_stack -= $amount;
+					} else {
+						goto regular_action;
+					}
 					break;
 
 				case 'check':
-					// Для чека ничего не меняем
+					if ($input['position'] == 'BB' && $currentBet <= 1) {
+						$amount = 1;
+						$current_stack -= $amount;
+					} else {
+						goto regular_action;
+					}
+					break;
+
+				default:
+					goto regular_action;
+			}
+		}
+		// Логика для всех остальных случаев
+		else {
+			regular_action:
+
+			switch ($input['action_type']) {
+				case 'fold':
+				case 'check':
 					break;
 
 				case 'call':
@@ -211,14 +171,15 @@ try {
 					}
 					$callAmount = (float)$input['amount'];
 
-					// Для SB/BB при последующих коллах вычитаем разницу между текущей ставкой и уже поставленными деньгами
-					if (in_array($input['position'], ['SB', 'BB'])) {
-						$amountToCall = max(0, $callAmount - $alreadyPosted);
-						$amount = $callAmount;
+					$alreadyPosted = $lastPlayerAction ? (float)$lastPlayerAction['amount'] : 0;
+					$amountToCall = max(0, $callAmount - $alreadyPosted);
+
+					if ($lastPlayerAction) {
+						$current_stack = (float)$lastPlayerAction['current_stack'] - $amountToCall;
 					} else {
-						// Для других позиций просто вычитаем всю сумму
-						$amount = $callAmount;
+						$current_stack -= $callAmount;
 					}
+					$amount = $callAmount;
 					break;
 
 				case 'bet':
@@ -228,37 +189,27 @@ try {
 						throw new Exception("Для {$input['action_type']} обязателен параметр amount");
 					}
 					$betAmount = (float)$input['amount'];
+
+					if ($lastPlayerAction) {
+						$current_stack = (float)$lastPlayerAction['current_stack'] - $betAmount;
+					} else {
+						$current_stack -= $betAmount;
+					}
 					$amount = $betAmount;
+
+					$stmt = $pdo->prepare("
+                        SELECT 1 FROM actions 
+                        WHERE hand_id = ? AND player_id = ? 
+                        AND action_type IN ('bet', 'raise', 'all-in')
+                        LIMIT 1
+                    ");
+					$stmt->execute([$input['hand_id'], $player_id]);
+					$hasPreviousBets = $stmt->fetch();
+
+					if (!$hasPreviousBets && in_array($finalActionType, ['raise', 'all-in'])) {
+						$finalActionType = 'bet';
+					}
 					break;
-			}
-		}
-
-		// Проверяем, есть ли у игрока предыдущие ставки в этой раздаче
-		$stmt = $pdo->prepare("
-            SELECT 1 FROM actions 
-            WHERE hand_id = ? AND player_id = ? 
-            AND action_type IN ('bet', 'raise', 'all-in')
-            LIMIT 1
-        ");
-		$stmt->execute([$input['hand_id'], $player_id]);
-		$hasPreviousBets = $stmt->fetch();
-
-		$finalActionType = $input['action_type'];
-		if (!$hasPreviousBets && in_array($finalActionType, ['raise', 'all-in'])) {
-			$finalActionType = 'bet';
-		}
-
-		// Новый расчет стека с учетом блайндов
-		if ($isFirstStreetAction) {
-			// Для первого действия на улице: начальный стек - amount
-			$current_stack -= $amount;
-		} else {
-			if ($isFirstActionBlind) {
-				// Если первое действие было блайндом, не учитываем его amount при расчете
-				$current_stack = $firstStreetStack - ($totalAmountOnStreet - $firstStreetAmount + $amount);
-			} else {
-				// Для обычных действий: (первый_стек + amount_первого_действия) - сумма_всех_предыдущих - текущий_amount
-				$current_stack = ($firstStreetStack + $firstStreetAmount) - ($totalAmountOnStreet + $amount);
 			}
 		}
 
@@ -299,6 +250,7 @@ try {
 			'message' => 'Действие успешно записано',
 			'processed_action_type' => $finalActionType,
 			'new_stack' => round($current_stack, 2),
+			'current_max_bet' => $currentBet, // Добавляем текущую максимальную ставку
 			'warnings' => $response['warnings']
 		];
 

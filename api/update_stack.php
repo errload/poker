@@ -42,16 +42,51 @@ try {
 		$actions = $stmt->fetchAll();
 
 		if (empty($actions)) {
-			throw new Exception('Действия игрока не найдены');
+			$pdo->commit();
+			echo json_encode([
+				'success' => true,
+				'message' => 'Действия игрока не найдены',
+				'updated_actions' => 0,
+				'initial_stack' => $newStack,
+				'final_stack' => $newStack
+			]);
+			exit;
 		}
 
 		$currentStack = $newStack;
 		$updatedActions = 0;
+		$isAllIn = false;
 
-		foreach ($actions as $action) {
+		foreach ($actions as $index => $action) {
 			$actionType = $action['action_type'];
 			$amount = (float)$action['amount'];
 			$sequenceNum = $action['sequence_num'];
+
+			// Проверяем условие для all-in (только для первого действия в цикле - последнего по времени)
+			if ($index === 0 && !in_array($actionType, ['fold', 'check']) && $amount > 0 && $currentStack < $amount) {
+				// Это последняя ставка и новый стек меньше её суммы
+				$isAllIn = true;
+				$adjustedAmount = $currentStack;
+				$stackForThisAction = 0;
+
+				// Обновляем запись в базе данных для all-in
+				$updateStmt = $pdo->prepare("
+                    UPDATE actions 
+                    SET current_stack = ?, amount = ?, action_type = 'all-in'
+                    WHERE hand_id = ? AND player_id = ? AND sequence_num = ?
+                ");
+				$updateStmt->execute([
+					$stackForThisAction,
+					$adjustedAmount,
+					$handId,
+					$playerId,
+					$sequenceNum
+				]);
+				$updatedActions += $updateStmt->rowCount();
+
+				$currentStack = $stackForThisAction;
+				continue;
+			}
 
 			// Рассчитываем стек для текущего действия
 			$stackForThisAction = $currentStack;
@@ -85,10 +120,11 @@ try {
 
 		$response = [
 			'success' => true,
-			'message' => 'Стеки успешно пересчитаны',
+			'message' => $isAllIn ? 'Стеки пересчитаны, последнее действие изменено на all-in' : 'Стеки успешно пересчитаны',
 			'updated_actions' => $updatedActions,
 			'initial_stack' => $newStack,
-			'final_stack' => $currentStack
+			'final_stack' => $currentStack,
+			'was_all_in' => $isAllIn
 		];
 
 		$pdo->commit();
