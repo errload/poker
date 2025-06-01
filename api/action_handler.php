@@ -8,7 +8,7 @@ $response = [
 	'message' => '',
 	'processed_action_type' => null,
 	'new_stack' => null,
-	'current_max_bet' => null, // Добавлено новое поле
+	'current_max_bet' => null,
 	'warnings' => []
 ];
 
@@ -103,7 +103,7 @@ try {
 		$stmt->execute([$input['hand_id'], $player_id]);
 		$lastPlayerAction = $stmt->fetch();
 
-		// Получаем максимальную ставку в текущей улице (обновляем запрос для получения current_max_bet)
+		// Получаем максимальную ставку в текущей улице
 		$stmt = $pdo->prepare("
             SELECT COALESCE(MAX(amount), 0) as current_bet 
             FROM actions 
@@ -111,7 +111,7 @@ try {
         ");
 		$stmt->execute([$input['hand_id'], $input['street']]);
 		$currentBet = (float)$stmt->fetchColumn();
-		$response['current_max_bet'] = $currentBet; // Добавляем в ответ
+		$response['current_max_bet'] = $currentBet;
 
 		// Устанавливаем начальный стек
 		$current_stack = isset($input['current_stack']) ? (float)$input['current_stack'] :
@@ -174,12 +174,21 @@ try {
 					$alreadyPosted = $lastPlayerAction ? (float)$lastPlayerAction['amount'] : 0;
 					$amountToCall = max(0, $callAmount - $alreadyPosted);
 
-					if ($lastPlayerAction) {
-						$current_stack = (float)$lastPlayerAction['current_stack'] - $amountToCall;
+					// Проверяем, хватает ли стека для колла
+					if ($current_stack <= $amountToCall) {
+						// Если не хватает - преобразуем в all-in
+						$amount = $current_stack;
+						$current_stack = 0;
+						$finalActionType = 'all-in';
 					} else {
-						$current_stack -= $callAmount;
+						// Если хватает - обычный колл
+						if ($lastPlayerAction) {
+							$current_stack = (float)$lastPlayerAction['current_stack'] - $amountToCall;
+						} else {
+							$current_stack -= $callAmount;
+						}
+						$amount = $callAmount;
 					}
-					$amount = $callAmount;
 					break;
 
 				case 'bet':
@@ -239,7 +248,7 @@ try {
 		$action_id = $pdo->lastInsertId();
 
 		// Обновляем статистику игрока
-		updatePlayerStats($pdo, $player_id, $input['action_type'], $input['street']);
+		updatePlayerStats($pdo, $player_id, $finalActionType, $input['street']);
 
 		$pdo->commit();
 
@@ -250,7 +259,7 @@ try {
 			'message' => 'Действие успешно записано',
 			'processed_action_type' => $finalActionType,
 			'new_stack' => round($current_stack, 2),
-			'current_max_bet' => $currentBet, // Добавляем текущую максимальную ставку
+			'current_max_bet' => $currentBet,
 			'warnings' => $response['warnings']
 		];
 
