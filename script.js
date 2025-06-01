@@ -112,6 +112,7 @@ document
 	.forEach(radio => {
 		radio.addEventListener('change', async function () {
 			let players = []
+			document.querySelector('.line_result').textContent = ''
 
 			document
 				.querySelectorAll('.player')
@@ -612,6 +613,8 @@ document
 document
 	.querySelector('.gto')
 	.addEventListener('click', async function () {
+		document.querySelector('.line_result').textContent = ''
+
 		const result = await sendAjax('/4bet/api/get_hand_analysis.php', {
 			'hand_id': hand_id,
 			'current_street': getBoardStatus(),
