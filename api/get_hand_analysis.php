@@ -8,19 +8,19 @@ try {
 	// Validate input
 	$input = json_decode(file_get_contents('php://input'), true);
 	if (!$input) {
-		throw new Exception('Invalid JSON input');
+		throw new Exception('Неверный JSON-ввод');
 	}
 
 	$required = ['hand_id', 'current_street', 'hero_position'];
 	foreach ($required as $field) {
 		if (!isset($input[$field])) {
-			throw new Exception("Missing required field: $field");
+			throw new Exception("Обязательное поле отсутствует: $field");
 		}
 	}
 
 	$validStreets = ['preflop', 'flop', 'turn', 'river'];
 	if (!in_array($input['current_street'], $validStreets)) {
-		throw new Exception("Invalid street: " . $input['current_street']);
+		throw new Exception("Недопустимая улица: " . $input['current_street']);
 	}
 
 	// Initialize database connection
@@ -42,9 +42,9 @@ try {
     ");
 	$handStmt->execute([$input['hand_id']]);
 	$handData = $handStmt->fetch();
-	if (!$handData) throw new Exception("Hand not found");
+	if (!$handData) throw new Exception("Раздача не найдена");
 
-	// Get all positions involved in this hand from actions table
+	// Get all positions involved in this hand
 	$positionsStmt = $pdo->prepare("
         SELECT DISTINCT position 
         FROM actions 
@@ -53,12 +53,11 @@ try {
 	$positionsStmt->execute([$input['hand_id']]);
 	$activePositions = $positionsStmt->fetchAll(PDO::FETCH_COLUMN, 0);
 
-	// If no actions yet, we'll use hero position as starting point
 	if (empty($activePositions)) {
 		$activePositions = [$input['hero_position']];
 	}
 
-	// First get recent hand IDs (workaround for LIMIT in subquery issue)
+	// Get recent hand IDs safely
 	$recentHandsStmt = $pdo->prepare("
         SELECT hand_id FROM hands 
         WHERE is_completed = 1 
@@ -67,9 +66,31 @@ try {
     ");
 	$recentHandsStmt->execute();
 	$recentHandIds = $recentHandsStmt->fetchAll(PDO::FETCH_COLUMN, 0);
-	$recentHandIdsList = implode(',', $recentHandIds);
 
-	// Get ALL players who have participated in this hand or are expected to participate
+	// Build condition for recent players
+	$recentPlayersCondition = "1=1";
+	$params = [
+		$input['hero_position'],
+		$input['hand_id'],
+		$input['hand_id'],
+		$input['hand_id'],
+		$input['hand_id'],
+		$input['hand_id'],
+		$input['hero_position'],
+		$input['hand_id']
+	];
+
+	if (!empty($recentHandIds)) {
+		$placeholders = implode(',', array_fill(0, count($recentHandIds), '?'));
+		$recentPlayersCondition = "p.player_id IN (
+            SELECT player_id FROM actions 
+            WHERE hand_id IN ($placeholders)
+            GROUP BY player_id
+        )";
+		$params = array_merge($params, $recentHandIds);
+	}
+
+	// Get all players in the hand
 	$playersStmt = $pdo->prepare("
         SELECT 
             p.player_id, 
@@ -167,37 +188,24 @@ try {
             SELECT 1 FROM actions a2 
             WHERE a2.hand_id = ? AND a2.player_id = p.player_id
         ) OR (
-            -- Include players who haven't acted yet but are expected to be in the hand
             ? IN ('SB', 'BB') AND 
             NOT EXISTS (
                 SELECT 1 FROM actions a3 
                 WHERE a3.hand_id = ? AND a3.player_id = p.player_id
             ) AND
-            p.player_id IN (
-                SELECT player_id FROM actions 
-                WHERE hand_id IN ($recentHandIdsList)
-                GROUP BY player_id
-            )
+            $recentPlayersCondition
         )
         ORDER BY FIELD(COALESCE(a.position, 'UTG'), 'SB', 'BB', 'UTG', 'MP', 'CO', 'BTN')
     ");
-	$playersStmt->execute([
-		$input['hero_position'],
-		$input['hand_id'],
-		$input['hand_id'],
-		$input['hand_id'],
-		$input['hand_id'],
-		$input['hand_id'],
-		$input['hero_position'],
-		$input['hand_id']
-	]);
+
+	$playersStmt->execute($params);
 	$players = $playersStmt->fetchAll();
 
-	// Determine action order for current street
+	// Determine action order
 	$positionsOrder = ['SB', 'BB', 'UTG', 'UTG+1', 'MP', 'HJ', 'CO', 'BTN'];
 	$currentStreet = $input['current_street'];
 
-	// Enhance player data with status and calculated metrics
+	// Enhance player data
 	foreach ($players as &$player) {
 		// Check if player has folded
 		$foldStmt = $pdo->prepare("
@@ -227,19 +235,17 @@ try {
 		$player['steal_attempt_pct'] = ($player['hands_played'] > 0) ?
 			round(($player['steal_attempt_count'] / $player['hands_played']) * 100, 1) : 0;
 
-		// Set default position if not set
 		if (empty($player['position'])) {
-			$player['position'] = 'UTG'; // Default position for players who haven't acted yet
+			$player['position'] = 'UTG';
 		}
 	}
 	unset($player);
 
-	// Get remaining players to act (not folded, not acted, not hero)
+	// Get remaining players to act
 	$remainingPlayers = array_filter($players, function($p) use ($input) {
 		return !$p['has_folded'] && !$p['has_acted'] && $p['position'] != $input['hero_position'];
 	});
 
-	// Sort remaining players by position order
 	usort($remainingPlayers, function($a, $b) use ($positionsOrder) {
 		return array_search($a['position'], $positionsOrder) - array_search($b['position'], $positionsOrder);
 	});
@@ -417,11 +423,11 @@ try {
 	]);
 
 	$apiResponse = curl_exec($ch);
-	if (curl_errno($ch)) throw new Exception('CURL error: ' . curl_error($ch));
+	if (curl_errno($ch)) throw new Exception('Ошибка CURL: ' . curl_error($ch));
 
 	$apiResponse = json_decode($apiResponse);
 	if (!$apiResponse || !isset($apiResponse->choices[0]->message->content)) {
-		throw new Exception('Invalid API response');
+		throw new Exception('Неверный ответ API');
 	}
 
 	$response = [
