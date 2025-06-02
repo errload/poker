@@ -5,23 +5,25 @@ require_once __DIR__.'/../db/config.php';
 $response = ['success' => false, 'error' => null];
 
 try {
+	// Validate input
 	$input = json_decode(file_get_contents('php://input'), true);
 	if (!$input) {
-		throw new Exception('Неверный JSON-ввод');
+		throw new Exception('Invalid JSON input');
 	}
 
 	$required = ['hand_id', 'current_street', 'hero_position'];
 	foreach ($required as $field) {
 		if (!isset($input[$field])) {
-			throw new Exception("Отсутствует обязательное поле: $field");
+			throw new Exception("Missing required field: $field");
 		}
 	}
 
 	$validStreets = ['preflop', 'flop', 'turn', 'river'];
 	if (!in_array($input['current_street'], $validStreets)) {
-		throw new Exception("Недопустимая улица: " . $input['current_street']);
+		throw new Exception("Invalid street: " . $input['current_street']);
 	}
 
+	// Initialize database connection
 	$pdo = new PDO(
 		"mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4",
 		DB_USER,
@@ -32,7 +34,7 @@ try {
 		]
 	);
 
-	// Получаем информацию о раздаче
+	// Get hand information
 	$handStmt = $pdo->prepare("
         SELECT hero_position, hero_stack, hero_cards, board, is_completed 
         FROM hands 
@@ -40,18 +42,29 @@ try {
     ");
 	$handStmt->execute([$input['hand_id']]);
 	$handData = $handStmt->fetch();
-	if (!$handData) throw new Exception("Раздача не найдена");
+	if (!$handData) throw new Exception("Hand not found");
 
-	// Получаем активных игроков с расширенной статистикой
+	// Get ALL players who have participated in this hand (including those who haven't acted yet)
 	$playersStmt = $pdo->prepare("
-        SELECT 
-            p.player_id, p.nickname, 
-            ROUND(p.vpip,1) as vpip, ROUND(p.pfr,1) as pfr,
-            ROUND(p.af,1) as af, ROUND(p.afq,1) as afq,
+        SELECT DISTINCT
+            p.player_id, 
+            p.nickname,
+            a.position,
+            ROUND(p.vpip,1) as vpip, 
+            ROUND(p.pfr,1) as pfr,
+            ROUND(p.af,1) as af, 
+            ROUND(p.afq,1) as afq,
             ROUND(p.three_bet,1) as three_bet,
-            ROUND(p.wtsd,1) as wtsd, ROUND(p.wsd,1) as wsd,
+            ROUND(p.wtsd,1) as wtsd, 
+            ROUND(p.wsd,1) as wsd,
             p.hands_played,
-            a.action_type as last_action, a.position,
+            (
+                SELECT a2.action_type 
+                FROM actions a2 
+                WHERE a2.hand_id = ? AND a2.player_id = p.player_id
+                ORDER BY a2.sequence_num DESC 
+                LIMIT 1
+            ) as last_action,
             (
                 SELECT COUNT(*) 
                 FROM actions a2 
@@ -112,34 +125,76 @@ try {
                 )
             ) as steal_attempt_count
         FROM players p
-        JOIN actions a ON a.hand_id = ? AND a.player_id = p.player_id
-        WHERE a.sequence_num = (
-            SELECT MAX(sequence_num) 
-            FROM actions 
-            WHERE hand_id = ? AND player_id = p.player_id AND action_type != 'fold'
+        LEFT JOIN actions a ON p.player_id = a.player_id AND a.hand_id = ?
+        WHERE EXISTS (
+            SELECT 1 FROM actions a2 
+            WHERE a2.hand_id = ? AND a2.player_id = p.player_id
         )
-        ORDER BY a.sequence_num
+        OR EXISTS (
+            SELECT 1 FROM hands h 
+            WHERE h.hand_id = ? 
+            AND (
+                h.hero_position = p.player_id OR 
+                h.hero_position LIKE CONCAT('%', p.player_id, '%')
+            )
+        )
+        ORDER BY FIELD(a.position, 'SB', 'BB', 'UTG', 'MP', 'CO', 'BTN')
     ");
-	$playersStmt->execute([$input['hand_id'], $input['hand_id']]);
+	$playersStmt->execute([
+		$input['hand_id'],
+		$input['hand_id'],
+		$input['hand_id'],
+		$input['hand_id']
+	]);
 	$players = $playersStmt->fetchAll();
 
-	// Добавляем расчетные метрики для каждого игрока
+	// Determine action order for current street
+	$positionsOrder = ['SB', 'BB', 'UTG', 'UTG+1', 'MP', 'HJ', 'CO', 'BTN'];
+	$currentStreet = $input['current_street'];
+
+	// Enhance player data with status and calculated metrics
 	foreach ($players as &$player) {
-		// CBET статистика
+		// Check if player has folded
+		$foldStmt = $pdo->prepare("
+            SELECT 1 FROM actions 
+            WHERE hand_id = ? AND player_id = ? AND action_type = 'fold'
+            LIMIT 1
+        ");
+		$foldStmt->execute([$input['hand_id'], $player['player_id']]);
+		$player['has_folded'] = $foldStmt->fetch() ? true : false;
+
+		// Check if player has acted on current street
+		$actedStmt = $pdo->prepare("
+            SELECT 1 FROM actions 
+            WHERE hand_id = ? AND player_id = ? AND street = ?
+            LIMIT 1
+        ");
+		$actedStmt->execute([$input['hand_id'], $player['player_id'], $currentStreet]);
+		$player['has_acted'] = $actedStmt->fetch() ? true : false;
+
+		// Calculate derived stats
 		$player['cbet_pct'] = ($player['faced_cbet_count'] > 0) ?
 			round(($player['cbet_count'] / $player['faced_cbet_count']) * 100, 1) : 0;
 
-		// Fold to CBET
 		$player['fold_to_cbet_pct'] = ($player['faced_cbet_count'] > 0) ?
 			round(($player['fold_to_cbet_count'] / $player['faced_cbet_count']) * 100, 1) : 0;
 
-		// Steal attempt percentage
 		$player['steal_attempt_pct'] = ($player['hands_played'] > 0) ?
 			round(($player['steal_attempt_count'] / $player['hands_played']) * 100, 1) : 0;
 	}
 	unset($player);
 
-	// Получаем историю действий для анализа реакции на героя
+	// Get remaining players to act (not folded, not acted, not hero)
+	$remainingPlayers = array_filter($players, function($p) use ($input) {
+		return !$p['has_folded'] && !$p['has_acted'] && $p['position'] != $input['hero_position'];
+	});
+
+	// Sort remaining players by position order
+	usort($remainingPlayers, function($a, $b) use ($positionsOrder) {
+		return array_search($a['position'], $positionsOrder) - array_search($b['position'], $positionsOrder);
+	});
+
+	// Get hero reactions data
 	$heroReactionsStmt = $pdo->prepare("
         SELECT 
             a.player_id,
@@ -163,7 +218,7 @@ try {
 	$heroReactionsStmt->execute([$input['hand_id'], $input['hero_position']]);
 	$heroReactions = $heroReactionsStmt->fetchAll();
 
-	// Анализируем реакцию на действия героя
+	// Analyze reactions to hero's actions
 	$reactionAnalysis = [];
 	foreach ($heroReactions as $reaction) {
 		if (!isset($reactionAnalysis[$reaction['player_id']])) {
@@ -180,7 +235,7 @@ try {
 		$reactionAnalysis[$reaction['player_id']]['action_breakdown'][$reaction['action_type']] = $reaction['action_count'];
 	}
 
-	// Получаем историю действий
+	// Get action history for the hand
 	$actionsStmt = $pdo->prepare("
         SELECT 
             a.street, 
@@ -198,7 +253,7 @@ try {
 	$actionsStmt->execute([$input['hand_id']]);
 	$actions = $actionsStmt->fetchAll();
 
-	// Рассчитываем банки и историю действий
+	// Calculate pot sizes and action history
 	$streetPots = ['preflop' => 0, 'flop' => 0, 'turn' => 0, 'river' => 0];
 	$currentPot = 0;
 	$actionHistory = [];
@@ -217,10 +272,10 @@ try {
 		];
 	}
 
-	// Подготавливаем данные для анализа с новой информацией
+	// Prepare complete analysis data
 	$analysisData = [
 		'i' => (int)$input['hand_id'],
-		's' => substr($input['current_street'], 0, 1),
+		's' => substr($currentStreet, 0, 1),
 		'h' => [
 			'p' => $handData['hero_position'],
 			's' => round($handData['hero_stack'], 1),
@@ -233,8 +288,8 @@ try {
 			't' => $streetPots['turn'],
 			'r' => $streetPots['river']
 		],
-		'pl' => array_map(function($p) use ($reactionAnalysis) {
-			$reactionData = isset($reactionAnalysis[$p['player_id']]) ? $reactionAnalysis[$p['player_id']] : null;
+		'pl' => array_map(function($p) use ($reactionAnalysis, $input) {
+			$reactionData = $reactionAnalysis[$p['player_id']] ?? null;
 			$aggPct = $reactionData && $reactionData['total_actions'] > 0 ?
 				round($reactionData['aggressive_actions'] / $reactionData['total_actions'] * 100, 1) : 0;
 
@@ -254,22 +309,45 @@ try {
 					'fold_cbet' => $p['fold_to_cbet_pct'],
 					'steal' => $p['steal_attempt_pct']
 				],
-				'l' => substr($p['last_action'], 0, 1),
+				'l' => $p['last_action'] ? substr($p['last_action'], 0, 1) : null,
+				'status' => [
+					'folded' => $p['has_folded'],
+					'acted' => $p['has_acted'],
+					'active' => !$p['has_folded'],
+					'to_act' => !$p['has_folded'] && !$p['has_acted'] && $p['position'] != $input['hero_position']
+				],
 				'react' => $reactionData ? [
 					'agg' => $aggPct,
 					'actions' => $reactionData['action_breakdown']
 				] : null
 			];
 		}, $players),
-		'a' => $actionHistory
+		'a' => $actionHistory,
+		'remaining_players' => array_map(function($p) {
+			return [
+				'i' => (int)$p['player_id'],
+				'n' => $p['nickname'],
+				'pos' => $p['position'],
+				'st' => [
+					'v' => $p['vpip'],
+					'p' => $p['pfr'],
+					'a' => $p['af'],
+					'aq' => $p['afq']
+				]
+			];
+		}, $remainingPlayers)
 	];
 
-	// Запрос к AI с дополнительным контекстом
-	$content = "Ты — профессиональный покерный AI. Анализируй раздачу с учетом:\n";
-	$content .= "- CBET статистики игроков (частота контбетов и фолдов к ним)\n";
-	$content .= "- Steal-попыток с поздних позиций\n";
-	$content .= "- Реакции оппонентов на предыдущие действия героя\n";
-	$content .= "Отвечай коротко: действие (если рейз, то сколько) | обоснование (2-3 слова)\n";
+	// Call AI for analysis
+	$content = "Ты — профессиональный покерный ИИ. Проанализируй раздачу с учётом:\n";
+	$content .= "- Статистики игроков (VPIP, PFR, агрессия и др.)\n";
+	$content .= "- CBET статистики (частота контбетов и фолдов к ним)\n";
+	$content .= "- Попыток стилов с поздних позиций\n";
+	$content .= "- Реакций оппонентов на предыдущие действия героя\n";
+	$content .= "- Текущей улицы и истории действий\n";
+	$content .= "- Статуса игроков (активен/выбыл/уже действовал)\n";
+	$content .= "- Игроков, которым еще предстоит действовать (remaining_players)\n\n";
+	$content .= "Отвечай кратко: действие (если рейз, укажи размер) | обоснование (2-3 слова)\n";
 	$content .= json_encode($analysisData, JSON_UNESCAPED_UNICODE);
 
 	$api_key = 'sk-JBDhoWZZwZSn8q2xmqmi9zETz12StFzC';
@@ -289,11 +367,11 @@ try {
 	]);
 
 	$apiResponse = curl_exec($ch);
-	if (curl_errno($ch)) throw new Exception('Ошибка CURL: ' . curl_error($ch));
+	if (curl_errno($ch)) throw new Exception('CURL error: ' . curl_error($ch));
 
 	$apiResponse = json_decode($apiResponse);
 	if (!$apiResponse || !isset($apiResponse->choices[0]->message->content)) {
-		throw new Exception('Неверный ответ API');
+		throw new Exception('Invalid API response');
 	}
 
 	$response = [
