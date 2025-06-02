@@ -123,8 +123,12 @@ try {
 					break;
 
 				case 'check':
-					// Чек возможен только для BB и только если нет предыдущих ставок
 					if ($input['position'] === 'BB' && !$hasPreviousRaises) {
+						// Чек для BB - оставляем 1
+						$amount = 1;
+					} elseif ($input['position'] === 'SB' && !$hasPreviousRaises) {
+						// Чек для SB конвертируется в колл 1 (0.5 уже поставлено + 0.5)
+						$finalActionType = 'call';
 						$amount = 1;
 					} else {
 						throw new Exception("Чек невозможен в данной ситуации");
