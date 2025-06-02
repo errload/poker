@@ -154,7 +154,7 @@ label {
 
 .player {
     width: 200px;
-    height: 75px;
+    height: 78px;
     display: flex;
     flex-direction: column;
     padding: 5px;

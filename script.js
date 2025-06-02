@@ -39,7 +39,7 @@ const getBoardStatus = () => {
 	let counter = 0
 
 	document
-		.querySelectorAll('.board_slot')
+		.querySelectorAll('.board_street .board_slot')
 		.forEach(elem => {
 			if (elem.textContent) counter++
 		})
@@ -113,6 +113,7 @@ document
 		radio.addEventListener('change', async function () {
 			let players = []
 			document.querySelector('.line_result').textContent = ''
+			document.querySelector('.line_bids').textContent = ''
 
 			// document
 			// 	.querySelectorAll('.player')
@@ -143,19 +144,19 @@ document
 
 			let radio_ID = parseInt(this.getAttribute('data-id'))
 			hand_id = null
-			bid_counter = 1
+			bid_counter = getBoardStatus() === 'preflop' ? 1 : 0
 
 			positions.forEach((value, key) => {
 				const player = document.querySelector(`.player.player${radio_ID}`)
 
 				player.querySelector('.player_position').textContent = value
 				player.querySelector('.player_buttons').style.display = 'flex'
-				player
-					.querySelectorAll('.stack_cards .slot')
-					.forEach(elem => {
-						removeClassCards(elem)
-						elem.classList.add('check')
-					})
+				// player
+				// 	.querySelectorAll('.board_slot')
+				// 	.forEach(elem => {
+				// 		removeClassCards(elem)
+				// 		elem.classList.add('check')
+				// 	})
 
 				radio_ID++
 				if (radio_ID > 8) radio_ID = 1
@@ -179,7 +180,7 @@ document
 
 			const result = await sendAjax('/4bet/api/new_hand_mysql.php', {
 				hero_position: document.querySelector('.player1 .player_position').textContent,
-				hero_stack: document.querySelector('.stack_cards .stack').textContent,
+				hero_stack: document.querySelector('.player1 .stack').textContent,
 				hero_cards: null
 			})
 
@@ -196,24 +197,24 @@ document
 			const classCard = (this.className).split(' ')[1]
 			let cards = null
 
-			if (!document.querySelectorAll('.player1 .slot')[0].textContent) {
-				document.querySelectorAll('.player1 .slot')[0].textContent = this.textContent
-				document.querySelectorAll('.player1 .slot')[0].classList.remove('check')
-				document.querySelectorAll('.player1 .slot')[0].classList.add(classCard)
-				document.querySelectorAll('.player1 .slot')[0].dataset.card = this.dataset.slot
+			if (!document.querySelectorAll('.my_cards .board_slot')[0].textContent) {
+				document.querySelectorAll('.my_cards .board_slot')[0].textContent = this.textContent
+				document.querySelectorAll('.my_cards .board_slot')[0].classList.remove('check')
+				document.querySelectorAll('.my_cards .board_slot')[0].classList.add(classCard)
+				document.querySelectorAll('.my_cards .board_slot')[0].dataset.card = this.dataset.slot
 				return false
 			}
 
-			if (!document.querySelectorAll('.player1 .slot')[1].textContent) {
-				document.querySelectorAll('.player1 .slot')[1].textContent = this.textContent
-				document.querySelectorAll('.player1 .slot')[1].classList.remove('check')
-				document.querySelectorAll('.player1 .slot')[1].classList.add(classCard)
-				document.querySelectorAll('.player1 .slot')[1].dataset.card = this.dataset.slot
+			if (!document.querySelectorAll('.my_cards .board_slot')[1].textContent) {
+				document.querySelectorAll('.my_cards .board_slot')[1].textContent = this.textContent
+				document.querySelectorAll('.my_cards .board_slot')[1].classList.remove('check')
+				document.querySelectorAll('.my_cards .board_slot')[1].classList.add(classCard)
+				document.querySelectorAll('.my_cards .board_slot')[1].dataset.card = this.dataset.slot
 
-				cards = document.querySelectorAll('.player1 .slot')[0].textContent
-				cards += document.querySelectorAll('.player1 .slot')[0].dataset.card
-				cards += document.querySelectorAll('.player1 .slot')[1].textContent
-				cards += document.querySelectorAll('.player1 .slot')[1].dataset.card
+				cards = document.querySelectorAll('.my_cards .board_slot')[0].textContent
+				cards += document.querySelectorAll('.my_cards .board_slot')[0].dataset.card
+				cards += document.querySelectorAll('.my_cards .board_slot')[1].textContent
+				cards += document.querySelectorAll('.my_cards .board_slot')[1].dataset.card
 
 				const result = await sendAjax('/4bet/api/update_hero_cards.php', {
 					hand_id: hand_id,
@@ -224,124 +225,131 @@ document
 				return false
 			}
 
-			if (!document.querySelectorAll('.board_slot')[0].textContent) {
-				document.querySelectorAll('.board_slot')[0].textContent = this.textContent
-				document.querySelectorAll('.board_slot')[0].classList.add(classCard)
-				document.querySelectorAll('.board_slot')[0].dataset.card = this.dataset.slot
+			if (!document.querySelectorAll('.board_street .board_slot')[0].textContent) {
+				document.querySelectorAll('.board_street .board_slot')[0].textContent = this.textContent
+				document.querySelectorAll('.board_street .board_slot')[0].classList.add(classCard)
+				document.querySelectorAll('.board_street .board_slot')[0].dataset.card = this.dataset.slot
 				return false
 			}
 
-			if (!document.querySelectorAll('.board_slot')[1].textContent) {
-				document.querySelectorAll('.board_slot')[1].textContent = this.textContent
-				document.querySelectorAll('.board_slot')[1].classList.add(classCard)
-				document.querySelectorAll('.board_slot')[1].dataset.card = this.dataset.slot
+			if (!document.querySelectorAll('.board_street .board_slot')[1].textContent) {
+				document.querySelectorAll('.board_street .board_slot')[1].textContent = this.textContent
+				document.querySelectorAll('.board_street .board_slot')[1].classList.add(classCard)
+				document.querySelectorAll('.board_street .board_slot')[1].dataset.card = this.dataset.slot
 				return false
 			}
 
-			if (!document.querySelectorAll('.board_slot')[2].textContent) {
-				document.querySelectorAll('.board_slot')[2].textContent = this.textContent
-				document.querySelectorAll('.board_slot')[2].classList.add(classCard)
-				document.querySelectorAll('.board_slot')[2].dataset.card = this.dataset.slot
+			if (!document.querySelectorAll('.board_street .board_slot')[2].textContent) {
+				document.querySelectorAll('.board_street .board_slot')[2].textContent = this.textContent
+				document.querySelectorAll('.board_street .board_slot')[2].classList.add(classCard)
+				document.querySelectorAll('.board_street .board_slot')[2].dataset.card = this.dataset.slot
 
-				cards = document.querySelectorAll('.board_slot')[0].textContent
-				cards += document.querySelectorAll('.board_slot')[0].dataset.card
-				cards += document.querySelectorAll('.board_slot')[1].textContent
-				cards += document.querySelectorAll('.board_slot')[1].dataset.card
-				cards += document.querySelectorAll('.board_slot')[2].textContent
-				cards += document.querySelectorAll('.board_slot')[2].dataset.card
+				cards = document.querySelectorAll('.board_street .board_slot')[0].textContent
+				cards += document.querySelectorAll('.board_street .board_slot')[0].dataset.card
+				cards += document.querySelectorAll('.board_street .board_slot')[1].textContent
+				cards += document.querySelectorAll('.board_street .board_slot')[1].dataset.card
+				cards += document.querySelectorAll('.board_street .board_slot')[2].textContent
+				cards += document.querySelectorAll('.board_street .board_slot')[2].dataset.card
 
 				const result = await sendAjax('/4bet/api/update_board.php', {
 					hand_id: hand_id,
 					board: cards
 				});
 
-				bid_counter = 0
+				bid_counter = getBoardStatus() === 'preflop' ? 1 : 0
+				document.querySelector('.line_result').textContent = ''
+				document.querySelector('.line_bids').textContent = ''
 				console.log(result)
 				return false
 			}
 
-			if (!document.querySelectorAll('.board_slot')[3].textContent) {
-				document.querySelectorAll('.board_slot')[3].textContent = this.textContent
-				document.querySelectorAll('.board_slot')[3].classList.add(classCard)
-				document.querySelectorAll('.board_slot')[3].dataset.card = this.dataset.slot
+			if (!document.querySelectorAll('.board_street .board_slot')[3].textContent) {
+				document.querySelectorAll('.board_street .board_slot')[3].textContent = this.textContent
+				document.querySelectorAll('.board_street .board_slot')[3].classList.add(classCard)
+				document.querySelectorAll('.board_street .board_slot')[3].dataset.card = this.dataset.slot
 
-				cards = document.querySelectorAll('.board_slot')[0].textContent
-				cards += document.querySelectorAll('.board_slot')[0].dataset.card
-				cards += document.querySelectorAll('.board_slot')[1].textContent
-				cards += document.querySelectorAll('.board_slot')[1].dataset.card
-				cards += document.querySelectorAll('.board_slot')[2].textContent
-				cards += document.querySelectorAll('.board_slot')[2].dataset.card
-				cards += ' ' + document.querySelectorAll('.board_slot')[3].textContent
-				cards += document.querySelectorAll('.board_slot')[3].dataset.card
+				cards = document.querySelectorAll('.board_street .board_slot')[0].textContent
+				cards += document.querySelectorAll('.board_street .board_slot')[0].dataset.card
+				cards += document.querySelectorAll('.board_street .board_slot')[1].textContent
+				cards += document.querySelectorAll('.board_street .board_slot')[1].dataset.card
+				cards += document.querySelectorAll('.board_street .board_slot')[2].textContent
+				cards += document.querySelectorAll('.board_street .board_slot')[2].dataset.card
+				cards += ' ' + document.querySelectorAll('.board_street .board_slot')[3].textContent
+				cards += document.querySelectorAll('.board_street .board_slot')[3].dataset.card
 
 				const result = await sendAjax('/4bet/api/update_board.php', {
 					hand_id: hand_id,
 					board: cards
 				});
 
-				bid_counter = 0
+				bid_counter = getBoardStatus() === 'preflop' ? 1 : 0
+				document.querySelector('.line_result').textContent = ''
+				document.querySelector('.line_bids').textContent = ''
 				console.log(result)
 				return false
 			}
 
-			if (!document.querySelectorAll('.board_slot')[4].textContent) {
-				document.querySelectorAll('.board_slot')[4].textContent = this.textContent
-				document.querySelectorAll('.board_slot')[4].classList.add(classCard)
-				document.querySelectorAll('.board_slot')[4].dataset.card = this.dataset.slot
+			if (!document.querySelectorAll('.board_street .board_slot')[4].textContent) {
+				document.querySelectorAll('.board_street .board_slot')[4].textContent = this.textContent
+				document.querySelectorAll('.board_street .board_slot')[4].classList.add(classCard)
+				document.querySelectorAll('.board_street .board_slot')[4].dataset.card = this.dataset.slot
 
-				cards = document.querySelectorAll('.board_slot')[0].textContent
-				cards += document.querySelectorAll('.board_slot')[0].dataset.card
-				cards += document.querySelectorAll('.board_slot')[1].textContent
-				cards += document.querySelectorAll('.board_slot')[1].dataset.card
-				cards += document.querySelectorAll('.board_slot')[2].textContent
-				cards += document.querySelectorAll('.board_slot')[2].dataset.card
-				cards += ' ' + document.querySelectorAll('.board_slot')[3].textContent
-				cards += document.querySelectorAll('.board_slot')[3].dataset.card
-				cards += ' ' + document.querySelectorAll('.board_slot')[4].textContent
-				cards += document.querySelectorAll('.board_slot')[4].dataset.card
+				cards = document.querySelectorAll('.board_street .board_slot')[0].textContent
+				cards += document.querySelectorAll('.board_street .board_slot')[0].dataset.card
+				cards += document.querySelectorAll('.board_street .board_slot')[1].textContent
+				cards += document.querySelectorAll('.board_street .board_slot')[1].dataset.card
+				cards += document.querySelectorAll('.board_street .board_slot')[2].textContent
+				cards += document.querySelectorAll('.board_street .board_slot')[2].dataset.card
+				cards += ' ' + document.querySelectorAll('.board_street .board_slot')[3].textContent
+				cards += document.querySelectorAll('.board_street .board_slot')[3].dataset.card
+				cards += ' ' + document.querySelectorAll('.board_street .board_slot')[4].textContent
+				cards += document.querySelectorAll('.board_street .board_slot')[4].dataset.card
 
 				const result = await sendAjax('/4bet/api/update_board.php', {
 					hand_id: hand_id,
 					board: cards
 				});
 
-				bid_counter = 0
+				bid_counter = getBoardStatus() === 'preflop' ? 1 : 0
+				document.querySelector('.line_result').textContent = ''
+				document.querySelector('.line_bids').textContent = ''
 				console.log(result)
 				return false
 			}
 
-			let start_position = null
-			document
-				.querySelectorAll('.player')
-				.forEach((elem, key) => {
-					key++
-					if (elem.querySelector('.player_position').textContent === 'BTN') {
-						start_position = key
-					}
-				})
-
-			for (let i = 0; i < 8; i++) {
-				start_position++
-				if (start_position > 8) start_position = 1
-				player = document.querySelector(`.player${start_position}`)
-				if (player.querySelector('.player_buttons').style.display === 'none') continue
-
-				if (!player.querySelectorAll('.slot')[0].textContent) {
-					player.querySelectorAll('.slot')[0].textContent = this.textContent
-					player.querySelectorAll('.slot')[0].classList.remove('check')
-					player.querySelectorAll('.slot')[0].classList.add(classCard)
-					player.querySelectorAll('.slot')[0].dataset.card = this.dataset.slot
-					return false
-				}
-
-				if (!player.querySelectorAll('.slot')[1].textContent) {
-					player.querySelectorAll('.slot')[1].textContent = this.textContent
-					player.querySelectorAll('.slot')[1].classList.remove('check')
-					player.querySelectorAll('.slot')[1].classList.add(classCard)
-					player.querySelectorAll('.slot')[1].dataset.card = this.dataset.slot
-					return false
-				}
-			}
+			// let start_position = null
+			// document
+			// 	.querySelectorAll('.player')
+			// 	.forEach((elem, key) => {
+			// 		console.log(elem)
+			// 		key++
+			// 		if (elem.querySelector('.player_position').textContent === 'BTN') {
+			// 			start_position = key
+			// 		}
+			// 	})
+			//
+			// for (let i = 0; i < 8; i++) {
+			// 	start_position++
+			// 	if (start_position > 8) start_position = 1
+			// 	player = document.querySelector(`.player${start_position}`)
+			// 	if (player.querySelector('.player_buttons').style.display === 'none') continue
+			//
+			// 	if (!player.querySelectorAll('.slot')[0].textContent) {
+			// 		player.querySelectorAll('.slot')[0].textContent = this.textContent
+			// 		player.querySelectorAll('.slot')[0].classList.remove('check')
+			// 		player.querySelectorAll('.slot')[0].classList.add(classCard)
+			// 		player.querySelectorAll('.slot')[0].dataset.card = this.dataset.slot
+			// 		return false
+			// 	}
+			//
+			// 	if (!player.querySelectorAll('.slot')[1].textContent) {
+			// 		player.querySelectorAll('.slot')[1].textContent = this.textContent
+			// 		player.querySelectorAll('.slot')[1].classList.remove('check')
+			// 		player.querySelectorAll('.slot')[1].classList.add(classCard)
+			// 		player.querySelectorAll('.slot')[1].dataset.card = this.dataset.slot
+			// 		return false
+			// 	}
+			// }
 		})
 	})
 
@@ -365,69 +373,66 @@ document
 
 // change stack
 document
-	.querySelectorAll('.player .select_stack')
-	.forEach(elem => {
-		elem.addEventListener('click', e => {
-			const player = e.target.closest('.player')
-			const overlay = document.createElement('div')
-			overlay.classList.add('popup-overlay')
-			const popup = document.createElement('div')
-			popup.classList.add('popup-window')
+	.querySelector('.player1 .stack')
+	.addEventListener('click', e => {
+		const overlay = document.createElement('div')
+		overlay.classList.add('popup-overlay')
+		const popup = document.createElement('div')
+		popup.classList.add('popup-window')
 
-			const addBidRaise = (sum) => {
-				const bid_raise = document.createElement('div')
-				bid_raise.classList.add('bid_raise')
-				bid_raise.textContent = sum
-				return bid_raise
-			};
+		const addBidRaise = (sum) => {
+			const bid_raise = document.createElement('div')
+			bid_raise.classList.add('bid_raise')
+			bid_raise.textContent = sum
+			return bid_raise
+		};
 
-			const bidRows = [
-				[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-				[11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
-				[21, 22, 23, 24, 25, 26, 27, 28, 29, 30],
-				[31, 32, 33, 34, 35, 36, 37, 38, 39, 40],
-				[41, 42, 43, 44, 45, 46, 47, 48, 49, 50],
-				[51, 52, 53, 54, 55, 56, 57, 58, 59, 60],
-				[61, 62, 63, 64, 65, 66, 67, 68, 69, 70],
-				[71, 72, 73, 74, 75, 76, 77, 78, 79, 80],
-				[81, 82, 83, 84, 85, 86, 87, 88, 89, 90],
-				[91, 92, 93, 94, 95, 96, 97, 98, 99, 100],
-				[101, 102, 103, 104, 105, 106, 107, 108, 109, 110],
-				[111, 112, 113, 114, 115, 116, 117, 118, 119, 120],
-				[121, 122, 123, 124, 125]
-			]
+		const bidRows = [
+			[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+			[11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+			[21, 22, 23, 24, 25, 26, 27, 28, 29, 30],
+			[31, 32, 33, 34, 35, 36, 37, 38, 39, 40],
+			[41, 42, 43, 44, 45, 46, 47, 48, 49, 50],
+			[51, 52, 53, 54, 55, 56, 57, 58, 59, 60],
+			[61, 62, 63, 64, 65, 66, 67, 68, 69, 70],
+			[71, 72, 73, 74, 75, 76, 77, 78, 79, 80],
+			[81, 82, 83, 84, 85, 86, 87, 88, 89, 90],
+			[91, 92, 93, 94, 95, 96, 97, 98, 99, 100],
+			[101, 102, 103, 104, 105, 106, 107, 108, 109, 110],
+			[111, 112, 113, 114, 115, 116, 117, 118, 119, 120],
+			[121, 122, 123, 124, 125]
+		]
 
-			bidRows.forEach(row => {
-				const rowContainer = document.createElement('div')
-				rowContainer.classList.add('bid-row')
-				row.forEach(bid => { rowContainer.appendChild(addBidRaise(bid)) })
-				popup.appendChild(rowContainer)
-			})
-
-			overlay.appendChild(popup)
-			document.body.appendChild(overlay)
-
-			document.querySelector('.popup-overlay').addEventListener('click', e => {
-				if (!e.target.classList.contains('popup-overlay')) return false
-				document.body.removeChild(overlay)
-			})
-
-			document
-				.querySelectorAll('.bid_raise')
-				.forEach(bid_raise => {
-					bid_raise.addEventListener('click', async e => {
-						const result = await sendAjax('/4bet/api/update_stack.php', {
-							hand_id: hand_id,
-							player_id: player.querySelector('.radio').value,
-							new_stack: e.target.textContent
-						})
-
-						player.querySelector('.stack_cards .stack').textContent = result.updated_stack
-						document.body.removeChild(overlay)
-						console.log(result)
-					})
-				})
+		bidRows.forEach(row => {
+			const rowContainer = document.createElement('div')
+			rowContainer.classList.add('bid-row')
+			row.forEach(bid => { rowContainer.appendChild(addBidRaise(bid)) })
+			popup.appendChild(rowContainer)
 		})
+
+		overlay.appendChild(popup)
+		document.body.appendChild(overlay)
+
+		document.querySelector('.popup-overlay').addEventListener('click', e => {
+			if (!e.target.classList.contains('popup-overlay')) return false
+			document.body.removeChild(overlay)
+		})
+
+		document
+			.querySelectorAll('.bid_raise')
+			.forEach(bid_raise => {
+				bid_raise.addEventListener('click', async e => {
+					const result = await sendAjax('/4bet/api/update_stack.php', {
+						hand_id: hand_id,
+						player_id: document.querySelector('.player1 .radio').value,
+						new_stack: e.target.textContent
+					})
+
+					document.querySelector('.player1 .stack').textContent = result.updated_stack
+					document.body.removeChild(overlay)
+					console.log(result)
+				})
+			})
 	})
 
 // click fold

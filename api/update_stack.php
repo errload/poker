@@ -21,23 +21,28 @@ try {
 	$handId = $input['hand_id'] ?? null;
 	$newStack = $input['new_stack'] ?? null;
 
-	if (!$handId || $newStack === null) {
-		throw new Exception('Необходимы hand_id и new_stack');
+	if ($newStack === null) {
+		throw new Exception('Необходим параметр new_stack');
 	}
 
 	$newStack = (float)$newStack;
 
-	// Просто обновляем стек героя в таблице hands
-	$stmt = $pdo->prepare("
-        UPDATE hands 
-        SET hero_stack = ?
-        WHERE hand_id = ?
-    ");
-	$stmt->execute([$newStack, $handId]);
+	if ($handId) {
+		// Обновляем стек героя в таблице hands только если hand_id передан
+		$stmt = $pdo->prepare("
+            UPDATE hands 
+            SET hero_stack = ?
+            WHERE hand_id = ?
+        ");
+		$stmt->execute([$newStack, $handId]);
+		$message = 'Стек героя успешно обновлен';
+	} else {
+		$message = 'Стек героя не обновлен в БД (отсутствует hand_id)';
+	}
 
 	$response = [
 		'success' => true,
-		'message' => 'Стек героя успешно обновлен',
+		'message' => $message,
 		'updated_stack' => $newStack
 	];
 
