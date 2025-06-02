@@ -44,12 +44,45 @@ try {
 	$handData = $handStmt->fetch();
 	if (!$handData) throw new Exception("Hand not found");
 
-	// Get ALL players who have participated in this hand (including those who haven't acted yet)
+	// Get all positions involved in this hand from actions table
+	$positionsStmt = $pdo->prepare("
+        SELECT DISTINCT position 
+        FROM actions 
+        WHERE hand_id = ?
+    ");
+	$positionsStmt->execute([$input['hand_id']]);
+	$activePositions = $positionsStmt->fetchAll(PDO::FETCH_COLUMN, 0);
+
+	// If no actions yet, we'll use hero position as starting point
+	if (empty($activePositions)) {
+		$activePositions = [$input['hero_position']];
+	}
+
+	// First get recent hand IDs (workaround for LIMIT in subquery issue)
+	$recentHandsStmt = $pdo->prepare("
+        SELECT hand_id FROM hands 
+        WHERE is_completed = 1 
+        ORDER BY hand_id DESC 
+        LIMIT 100
+    ");
+	$recentHandsStmt->execute();
+	$recentHandIds = $recentHandsStmt->fetchAll(PDO::FETCH_COLUMN, 0);
+	$recentHandIdsList = implode(',', $recentHandIds);
+
+	// Get ALL players who have participated in this hand or are expected to participate
 	$playersStmt = $pdo->prepare("
-        SELECT DISTINCT
+        SELECT 
             p.player_id, 
             p.nickname,
-            a.position,
+            COALESCE(a.position, 
+                CASE 
+                    WHEN ? IN ('SB', 'BB') THEN 
+                        CASE WHEN NOT EXISTS (
+                            SELECT 1 FROM actions WHERE hand_id = ? AND player_id = p.player_id
+                        ) THEN 'UTG' ELSE NULL END
+                    ELSE NULL 
+                END
+            ) as position,
             ROUND(p.vpip,1) as vpip, 
             ROUND(p.pfr,1) as pfr,
             ROUND(p.af,1) as af, 
@@ -123,27 +156,39 @@ try {
                     AND a3.is_aggressive = 1
                     AND a3.sequence_num < a2.sequence_num
                 )
-            ) as steal_attempt_count
+            ) as steal_attempt_count,
+            EXISTS (
+                SELECT 1 FROM actions a2 
+                WHERE a2.hand_id = ? AND a2.player_id = p.player_id
+            ) as has_acted_in_hand
         FROM players p
         LEFT JOIN actions a ON p.player_id = a.player_id AND a.hand_id = ?
         WHERE EXISTS (
             SELECT 1 FROM actions a2 
             WHERE a2.hand_id = ? AND a2.player_id = p.player_id
-        )
-        OR EXISTS (
-            SELECT 1 FROM hands h 
-            WHERE h.hand_id = ? 
-            AND (
-                h.hero_position = p.player_id OR 
-                h.hero_position LIKE CONCAT('%', p.player_id, '%')
+        ) OR (
+            -- Include players who haven't acted yet but are expected to be in the hand
+            ? IN ('SB', 'BB') AND 
+            NOT EXISTS (
+                SELECT 1 FROM actions a3 
+                WHERE a3.hand_id = ? AND a3.player_id = p.player_id
+            ) AND
+            p.player_id IN (
+                SELECT player_id FROM actions 
+                WHERE hand_id IN ($recentHandIdsList)
+                GROUP BY player_id
             )
         )
-        ORDER BY FIELD(a.position, 'SB', 'BB', 'UTG', 'MP', 'CO', 'BTN')
+        ORDER BY FIELD(COALESCE(a.position, 'UTG'), 'SB', 'BB', 'UTG', 'MP', 'CO', 'BTN')
     ");
 	$playersStmt->execute([
+		$input['hero_position'],
 		$input['hand_id'],
 		$input['hand_id'],
 		$input['hand_id'],
+		$input['hand_id'],
+		$input['hand_id'],
+		$input['hero_position'],
 		$input['hand_id']
 	]);
 	$players = $playersStmt->fetchAll();
@@ -181,6 +226,11 @@ try {
 
 		$player['steal_attempt_pct'] = ($player['hands_played'] > 0) ?
 			round(($player['steal_attempt_count'] / $player['hands_played']) * 100, 1) : 0;
+
+		// Set default position if not set
+		if (empty($player['position'])) {
+			$player['position'] = 'UTG'; // Default position for players who haven't acted yet
+		}
 	}
 	unset($player);
 
