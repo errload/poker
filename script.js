@@ -41,7 +41,7 @@ const getBoardStatus = () => {
 	document
 		.querySelectorAll('.board_street .board_slot')
 		.forEach(elem => {
-			if (elem.textContent) counter++
+			if (elem.dataset.card) counter++
 		})
 
 	if (counter < 3) return 'preflop'
@@ -115,6 +115,12 @@ document
 			document.querySelector('.line_result').textContent = ''
 			document.querySelector('.line_bids').textContent = ''
 
+			document
+				.querySelectorAll('.board_street .board_slot')
+				.forEach(elem => {
+					elem.dataset.card = ''
+				})
+
 			// document
 			// 	.querySelectorAll('.player')
 			// 	.forEach(elem => {
@@ -145,6 +151,8 @@ document
 			let radio_ID = parseInt(this.getAttribute('data-id'))
 			hand_id = null
 			bid_counter = getBoardStatus() === 'preflop' ? 1 : 0
+			console.log('getBoardStatus', getBoardStatus())
+			console.log('bid_counter', bid_counter)
 
 			positions.forEach((value, key) => {
 				const player = document.querySelector(`.player.player${radio_ID}`)
@@ -452,7 +460,7 @@ document
 				'action_type': 'fold',
 				'amount': null,
 				'position': player.querySelector('.player_position').textContent,
-				'current_stack': player.querySelector('.stack_cards .stack').textContent
+				// 'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 
 			// player.querySelector('.stack_cards .stack').textContent = result.new_stack
@@ -477,7 +485,7 @@ document
 				'action_type': 'call',
 				'amount': bid_counter,
 				'position': player.querySelector('.player_position').textContent,
-				'current_stack': player.querySelector('.stack_cards .stack').textContent
+				// 'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 
 			// player.querySelector('.stack_cards .stack').textContent = result.new_stack
@@ -501,7 +509,7 @@ document
 				'action_type': 'check',
 				'amount': null,
 				'position': player.querySelector('.player_position').textContent,
-				'current_stack': player.querySelector('.stack_cards .stack').textContent
+				// 'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 
 			// player.querySelector('.stack_cards .stack').textContent = result.new_stack
@@ -574,7 +582,7 @@ document
 							'action_type': 'raise',
 							'amount': bid_counter,
 							'position': player.querySelector('.player_position').textContent,
-							'current_stack': player.querySelector('.stack_cards .stack').textContent
+							// 'current_stack': player.querySelector('.stack_cards .stack').textContent
 						})
 
 						// player.querySelector('.stack_cards .stack').textContent = result.new_stack
@@ -642,16 +650,17 @@ document
 				.forEach(bid_raise => {
 					bid_raise.addEventListener('click', async (e) => {
 						// changeSelectStack(player, false)
-						bid_counter = parseFloat(e.target.textContent)
+						let allin = parseFloat(e.target.textContent)
+						if (allin > bid_counter) bid_counter = allin
 
 						const result = await sendAjax('/4bet/api/action_handler.php', {
 							'hand_id': hand_id,
 							'player_id': player.querySelector('.radio').value,
 							"street": getBoardStatus(),
 							'action_type': 'all-in',
-								'amount': bid_counter,
+							'amount': allin,
 							'position': player.querySelector('.player_position').textContent,
-							'current_stack': player.querySelector('.stack_cards .stack').textContent
+							// 'current_stack': player.querySelector('.stack_cards .stack').textContent
 						})
 
 						// player.querySelector('.stack_cards .stack').textContent = result.new_stack

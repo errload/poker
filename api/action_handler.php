@@ -87,70 +87,113 @@ try {
 		$currentBet = (float)$stmt->fetchColumn();
 		$response['current_max_bet'] = $currentBet;
 
+		// Проверяем, были ли повышения ставки до этого
+		$stmt = $pdo->prepare("
+            SELECT 1 FROM actions 
+            WHERE hand_id = ? AND street = ? 
+            AND action_type IN ('bet', 'raise', 'all-in')
+            LIMIT 1
+        ");
+		$stmt->execute([$input['hand_id'], $input['street']]);
+		$hasPreviousRaises = (bool)$stmt->fetch();
+
+		// Обрабатываем действие
+		$amount = null;
+		$finalActionType = $input['action_type'];
+		$isVoluntary = true;
+		$isAggressive = false;
+
+		// Определяем условия для слепых ставок
+		$isBlindPosition = in_array($input['position'], ['SB', 'BB']);
+		$isPreflop = $input['street'] === 'preflop';
+		$isBlindAction = $isBlindPosition && $isPreflop;
+
 		// Проверяем, первое ли это действие игрока в раздаче
 		$stmt = $pdo->prepare("SELECT COUNT(*) FROM actions WHERE hand_id = ? AND player_id = ?");
 		$stmt->execute([$input['hand_id'], $player_id]);
 		$isFirstAction = $stmt->fetchColumn() == 0;
 
-		// Обрабатываем действие
-		$amount = 0;
-		$finalActionType = $input['action_type'];
-		$isVoluntary = true;
-		$isAggressive = false;
-
-		switch ($input['action_type']) {
-			case 'fold':
-				// Фолды по блайндам не считаются добровольными
-				if ($isFirstAction && in_array($input['position'], ['SB', 'BB'])) {
+		if ($isBlindAction) {
+			// Обработка для SB/BB в префлопе
+			switch ($input['action_type']) {
+				case 'fold':
+					// Для фолда всегда записываем обязательные ставки
+					$amount = $input['position'] === 'SB' ? 0.5 : 1;
 					$isVoluntary = false;
-				}
-				break;
+					break;
 
-			case 'check':
-				if ($currentBet > 0) {
-					throw new Exception("Нельзя чековать, когда есть ставка");
-				}
-				break;
+				case 'check':
+					// Чек возможен только для BB и только если нет предыдущих ставок
+					if ($input['position'] === 'BB' && !$hasPreviousRaises) {
+						$amount = 1;
+					} else {
+						throw new Exception("Чек невозможен в данной ситуации");
+					}
+					break;
 
-			case 'call':
-				if (!isset($input['amount'])) {
-					throw new Exception("Не указана сумма для колла");
-				}
-				$amount = (float)$input['amount'];
-				break;
+				case 'call':
+					if ($hasPreviousRaises) {
+						// Если были повышения, требуем явное указание суммы
+						if (!isset($input['amount'])) {
+							throw new Exception("Не указана сумма для колла");
+						}
+						$amount = (float)$input['amount'];
+					} else {
+						// Без повышений - стандартные блайнды
+						// Для SB колл означает доплату до 1 (0.5 + 0.5)
+						// Для BB колл означает просто оставить 1
+						$amount = $input['position'] === 'SB' ? 1 : 1;
+					}
+					break;
 
-			case 'bet':
-			case 'raise':
-				if (!isset($input['amount'])) {
-					throw new Exception("Не указана сумма для ставки/рейза");
-				}
-				$amount = (float)$input['amount'];
+				case 'bet':
+				case 'raise':
+				case 'all-in':
+					if (!isset($input['amount'])) {
+						throw new Exception("Не указана сумма для ставки/рейза");
+					}
+					$amount = (float)$input['amount'];
+					$isAggressive = true;
+					break;
+			}
+		} else {
+			// Обычная обработка для всех остальных случаев
+			switch ($input['action_type']) {
+				case 'fold':
+					$amount = null;
+					break;
 
-				// Проверяем, первая ли это ставка на улице
-				$stmt = $pdo->prepare("
-                    SELECT 1 FROM actions 
-                    WHERE hand_id = ? AND street = ? 
-                    AND action_type IN ('bet', 'raise', 'all-in')
-                    LIMIT 1
-                ");
-				$stmt->execute([$input['hand_id'], $input['street']]);
-				$isFirstBetOnStreet = !$stmt->fetch();
+				case 'check':
+					$amount = null;
+					break;
 
-				// Если это первый рейз на улице, меняем на бет
-				if ($isFirstBetOnStreet && $finalActionType == 'raise') {
-					$finalActionType = 'bet';
-				}
+				case 'call':
+				case 'bet':
+				case 'raise':
+				case 'all-in':
+					if (!isset($input['amount'])) {
+						throw new Exception("Не указана сумма для действия");
+					}
+					$amount = (float)$input['amount'];
+					if (in_array($input['action_type'], ['bet', 'raise', 'all-in'])) {
+						$isAggressive = true;
+					}
+					break;
+			}
+		}
 
-				$isAggressive = true;
-				break;
-
-			case 'all-in':
-				if (!isset($input['amount'])) {
-					throw new Exception("Не указана сумма для олл-ина");
-				}
-				$amount = (float)$input['amount'];
-				$isAggressive = true;
-				break;
+		// Для рейза проверяем, первая ли это ставка на улице
+		if ($finalActionType === 'raise') {
+			$stmt = $pdo->prepare("
+                SELECT 1 FROM actions 
+                WHERE hand_id = ? AND street = ? 
+                AND action_type IN ('bet', 'raise', 'all-in')
+                LIMIT 1
+            ");
+			$stmt->execute([$input['hand_id'], $input['street']]);
+			if (!$stmt->fetch()) {
+				$finalActionType = 'bet'; // Первое повышение на улице становится бетом
+			}
 		}
 
 		// Вставляем действие
@@ -187,7 +230,7 @@ try {
 			'action_id' => $action_id,
 			'message' => 'Действие успешно обработано',
 			'processed_action_type' => $finalActionType,
-			'current_max_bet' => max($currentBet, $amount)
+			'current_max_bet' => max($currentBet, $amount ?? 0)
 		];
 
 	} catch (Exception $e) {
