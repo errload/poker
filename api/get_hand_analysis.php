@@ -397,7 +397,7 @@ try {
 	$content .= "- Текущей улицы и истории действий\n";
 	$content .= "- Статуса игроков (активен/выбыл/уже действовал)\n";
 	$content .= "- Игроков, которым еще предстоит действовать (remaining_players)\n\n";
-	$content .= "Отвечай кратко: действие (если рейз, укажи размер) | обоснование (2-3 слова)\n";
+	$content .= "Отвечай кратко: действие (если рейз, укажи размер) | описание (2-3 слова)\n";
 	$content .= json_encode($analysisData, JSON_UNESCAPED_UNICODE);
 
 	$api_key = 'sk-JBDhoWZZwZSn8q2xmqmi9zETz12StFzC';
