@@ -115,7 +115,7 @@ label {
     padding: 4px 10px;
     border: 1px solid #939393;
     background: #f6f6f6;
-    /*border-radius: 300px;*/
+    border-radius: 3px;
     display: flex;
     flex-direction: column;
     /*justify-content: center;*/
@@ -324,6 +324,23 @@ label {
 
 .line_result_wrapper {
     margin-top: 10px;
+}
+
+.line_bids_wrapper .line {
+    padding: 4px 10px 7px;
+}
+
+.line_bids {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.bid_description {
+    border: 1px solid #939393;
+    border-radius: 3px;
+    padding: 1px 3px;
+    margin: 3px 3px 0;
 }
 
 /*.gto {*/

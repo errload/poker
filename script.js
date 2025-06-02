@@ -12,6 +12,13 @@ const removeClassCards = elem => {
 	elem.textContent = ''
 }
 
+const addBidDescription = description => {
+	const bid_description = document.createElement('div')
+	bid_description.classList.add('bid_description')
+	bid_description.textContent = description
+	document.querySelector('.line_bids').appendChild(bid_description)
+}
+
 function showNotification(message) {
 	const notification = document.getElementById('notification')
 	let fadeOutTimeout
@@ -449,6 +456,7 @@ document
 	.forEach(elem => {
 		elem.addEventListener('click', async function () {
 			const player = this.closest('.player')
+			const position = player.querySelector('.player_position').textContent
 			console.log(bid_counter)
 
 			player.querySelector('.player_buttons').style.display = 'none'
@@ -459,9 +467,11 @@ document
 				"street": getBoardStatus(),
 				'action_type': 'fold',
 				'amount': null,
-				'position': player.querySelector('.player_position').textContent,
+				'position': position,
 				// 'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
+
+			addBidDescription(`${position}:fold`)
 
 			// player.querySelector('.stack_cards .stack').textContent = result.new_stack
 			console.log(result)
@@ -475,6 +485,7 @@ document
 	.forEach(elem => {
 		elem.addEventListener('click', async function () {
 			const player = this.closest('.player')
+			const position = player.querySelector('.player_position').textContent
 			// changeSelectStack(player, false)
 			console.log(bid_counter)
 
@@ -488,6 +499,8 @@ document
 				// 'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
 
+			addBidDescription(`${position}:coll ${bid_counter} bb`)
+
 			// player.querySelector('.stack_cards .stack').textContent = result.new_stack
 			console.log(result)
 			showNotification('call')
@@ -500,6 +513,7 @@ document
 	.forEach(elem => {
 		elem.addEventListener('click', async function () {
 			const player = this.closest('.player')
+			const position = player.querySelector('.player_position').textContent
 			console.log(bid_counter)
 
 			const result = await sendAjax('/4bet/api/action_handler.php', {
@@ -511,6 +525,8 @@ document
 				'position': player.querySelector('.player_position').textContent,
 				// 'current_stack': player.querySelector('.stack_cards .stack').textContent
 			})
+
+			addBidDescription(`${position}:check`)
 
 			// player.querySelector('.stack_cards .stack').textContent = result.new_stack
 			console.log(result)
@@ -524,6 +540,7 @@ document
 	.forEach(elem => {
 		elem.addEventListener('click', function () {
 			const player = this.closest('.player')
+			const position = player.querySelector('.player_position').textContent
 
 			const overlay = document.createElement('div')
 			overlay.classList.add('popup-overlay')
@@ -585,6 +602,8 @@ document
 							// 'current_stack': player.querySelector('.stack_cards .stack').textContent
 						})
 
+						addBidDescription(`${position}:raise ${bid_counter} bb`)
+
 						// player.querySelector('.stack_cards .stack').textContent = result.new_stack
 						console.log(result)
 						showNotification('raise ' + bid_counter + ' bb')
@@ -600,6 +619,7 @@ document
 	.forEach(elem => {
 		elem.addEventListener('click', async function () {
 			const player = this.closest('.player')
+			const position = player.querySelector('.player_position').textContent
 			// changeSelectStack(player, true)
 
 			const overlay = document.createElement('div')
@@ -662,6 +682,8 @@ document
 							'position': player.querySelector('.player_position').textContent,
 							// 'current_stack': player.querySelector('.stack_cards .stack').textContent
 						})
+
+						addBidDescription(`${position}:all-in ${bid_counter} bb`)
 
 						// player.querySelector('.stack_cards .stack').textContent = result.new_stack
 						console.log(result)

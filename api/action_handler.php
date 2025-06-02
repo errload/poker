@@ -67,7 +67,7 @@ try {
 		$stmt = $pdo->prepare("SELECT 1 FROM players WHERE player_id = ?");
 		$stmt->execute([$player_id]);
 		if (!$stmt->fetch()) {
-			$nickname = "Игрок_" . substr($player_id, 0, 5);
+			$nickname = "Player" . substr($player_id, 0, 1);
 			$stmt = $pdo->prepare("INSERT INTO players (player_id, nickname) VALUES (?, ?)");
 			$stmt->execute([$player_id, $nickname]);
 		}
