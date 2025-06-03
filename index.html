@@ -36,25 +36,25 @@
 						<option value="888">player8</option>
 					</select>
 					<button class="clear">clear</button>
-					<button class="gto">GTO</button>
+<!--					<button class="gto">GTO</button>-->
 				</div>
 			</div>
 
-<!--			<div class="col-12">-->
-<!--				<div class="line">-->
-<!--					<div class="line_caption">game stage:</div>-->
-<!--					<div class="line_content">-->
-<!--						<input type="radio" class="radio" id="position_btn" name="position" value="BTN" checked /><label for="position_btn">BTN</label>-->
-<!--						<input type="radio" class="radio" id="position_co" name="position" value="CO" /><label for="position_co">CO</label>-->
-<!--						<input type="radio" class="radio" id="position_hj" name="position" value="HJ" /><label for="position_hj">HJ</label>-->
-<!--						<input type="radio" class="radio" id="position_mp" name="position" value="MP" /><label for="position_mp">MP</label>-->
-<!--						<input type="radio" class="radio" id="position_utg1" name="position" value="UTG+1" /><label for="position_utg1">UTG+1</label>-->
-<!--						<input type="radio" class="radio" id="position_utg" name="position" value="UTG" /><label for="position_utg">UTG</label>-->
-<!--						<input type="radio" class="radio" id="position_bb" name="position" value="BB" /><label for="position_bb">BB</label>-->
-<!--						<input type="radio" class="radio" id="position_sb" name="position" value="SB" /><label for="position_sb">SB</label>-->
-<!--					</div>-->
-<!--				</div>-->
-<!--			</div>-->
+			<div class="col-12">
+				<div class="line">
+					<div class="line_caption">positions:</div>
+					<div class="line_content">
+						<input type="radio" class="radio" id="position_co" name="position" data-id="" value="CO" /><label for="position_co">CO</label>
+						<input type="radio" class="radio" id="position_hj" name="position" data-id="" value="HJ" /><label for="position_hj">HJ</label>
+						<input type="radio" class="radio" id="position_mp" name="position" data-id="" value="MP" /><label for="position_mp">MP</label>
+						<input type="radio" class="radio" id="position_utg1" name="position" data-id="" value="UTG+1" /><label for="position_utg1">UTG+1</label>
+						<input type="radio" class="radio" id="position_utg" name="position" data-id="" value="UTG" /><label for="position_utg">UTG</label>
+						<input type="radio" class="radio" id="position_bb" name="position" data-id="" value="BB" /><label for="position_bb">BB</label>
+						<input type="radio" class="radio" id="position_sb" name="position" data-id="" value="SB" /><label for="position_sb">SB</label>
+						<input type="radio" class="radio" id="position_btn" name="position" data-id="" value="BTN" /><label for="position_btn">BTN</label>
+					</div>
+				</div>
+			</div>
 
 			<div class="col-12">
 				<div class="slots">
@@ -119,179 +119,211 @@
 				</div>
 			</div>
 
-<!--			<div class="col-12">-->
-<!--				<div class="line">-->
-<!--					<button class="fold button">F</button>-->
-<!--					<button class="call button">C</button>-->
-<!--					<button class="check button">Ch</button>-->
-<!--					<button class="raise button">R</button>-->
-<!--					<button class="all-in button">A</button>-->
-<!--					<div class="stack">125</div>-->
-<!--					<button class="raise button">R</button>-->
-<!--					<button class="all-in button">A</button>-->
-<!--				</div>-->
-<!--			</div>-->
+			<div class="col-12">
+				<div class="line">
+					<button class="fold button">Fold</button>
+					<button class="call button">Call</button>
+					<button class="check button">Chech</button>
+					<button class="raise button">Raise</button>
+					<button class="all-in button">All-in</button>
+					<div class="stack">125</div>
+					<button class="reset">reset</button>
+					<button class="gto">GTO</button>
+				</div>
+			</div>
 
 			<div class="col-12">
-				<div class="board">
-
-					<div class="board_line">
-						<div class="player player4">
-							<div class="player_radio">
-								<div>
-									<input type="radio" class="radio" id="player4" data-id="4" name="player" value="444" />
-									<label for="player4">player4</label>
-								</div>
-								<div class="player_position">UTG</div>
-							</div>
-							<div class="player_buttons">
-								<button class="fold button">F</button>
-								<button class="check button">Ch</button>
-								<button class="call button">C</button>
-								<button class="raise button">R</button>
-								<button class="all-in button">A</button>
-							</div>
-						</div>
-
-						<div class="player player5">
-							<div class="player_radio">
-								<div>
-									<input type="radio" class="radio" id="player5" data-id="5" name="player" value="555" />
-									<label for="player5">player5</label>
-								</div>
-								<div class="player_position">UTG+1</div>
-							</div>
-							<div class="player_buttons">
-								<button class="fold button">F</button>
-								<button class="check button">Ch</button>
-								<button class="call button">C</button>
-								<button class="raise button">R</button>
-								<button class="all-in button">A</button>
-							</div>
-						</div>
-
-						<div class="player player6">
-							<div class="player_radio">
-								<div>
-									<input type="radio" class="radio" id="player6" data-id="6" name="player" value="666" />
-									<label for="player6">player6</label>
-								</div>
-								<div class="player_position">MP</div>
-							</div>
-							<div class="player_buttons">
-								<button class="fold button">F</button>
-								<button class="check button">Ch</button>
-								<button class="call button">C</button>
-								<button class="raise button">R</button>
-								<button class="all-in button">A</button>
-							</div>
-						</div>
+				<div class="line">
+					<div class="line_caption">board stady:</div>
+					<div class="line_content">
+						<input type="radio" class="radio" id="board_stady_preflop" name="board_stady" value="preflop" checked /><label for="board_stady_preflop">preflop</label>
+						<input type="radio" class="radio" id="board_stady_flop" name="board_stady" value="flop" /><label for="board_stady_flop">flop</label>
+						<input type="radio" class="radio" id="board_stady_turn" name="board_stady" value="turn" /><label for="board_stady_turn">turn</label>
+						<input type="radio" class="radio" id="board_stady_river" name="board_stady" value="river" /><label for="board_stady_river">river</label>
+						<input type="radio" class="radio" id="board_stady_showdown" name="board_stady" value="showdown" /><label for="board_stady_showdown">showdown</label>
 					</div>
+				</div>
+			</div>
 
-					<div class="board_line">
-						<div class="player player3">
-							<div class="player_radio">
-								<div>
-									<input type="radio" class="radio" id="player3" data-id="3" name="player" value="333" />
-									<label for="player3">player3</label>
-								</div>
-								<div class="player_position">BB</div>
-							</div>
-							<div class="player_buttons">
-								<button class="fold button">F</button>
-								<button class="check button">Ch</button>
-								<button class="call button">C</button>
-								<button class="raise button">R</button>
-								<button class="all-in button">A</button>
-							</div>
+			<div class="col-12">
+				<div class="line">
+					<div class="line_caption">board:</div>
+					<div class="line_content">
+						<div class="my_cards">
+							<div class="board_slot" data-card=""></div>
+							<div class="board_slot" data-card=""></div>
 						</div>
-
-						<div class="player_board">
-							<div class="my_cards">
-								<div class="board_slot" data-card=""></div>
-								<div class="board_slot" data-card=""></div>
-							</div>
-							<div class="board_street">
-								<div class="board_slot" data-card=""></div>
-								<div class="board_slot" data-card=""></div>
-								<div class="board_slot" data-card=""></div>
-								<div class="board_slot" data-card=""></div>
-								<div class="board_slot" data-card=""></div>
-							</div>
-						</div>
-
-						<div class="player player7">
-							<div class="player_radio">
-								<div>
-									<input type="radio" class="radio" id="player7" data-id="7" name="player" value="777" />
-									<label for="player7">player7</label>
-								</div>
-								<div class="player_position">HJ</div>
-							</div>
-							<div class="player_buttons">
-								<button class="fold button">F</button>
-								<button class="check button">Ch</button>
-								<button class="call button">C</button>
-								<button class="raise button">R</button>
-								<button class="all-in button">A</button>
-							</div>
-						</div>
-					</div>
-
-				<div class="board_line">
-					<div class="player player2">
-						<div class="player_radio">
-							<div>
-								<input type="radio" class="radio" id="player2" data-id="2" name="player" value="222" />
-								<label for="player2">player2</label>
-							</div>
-							<div class="player_position">SB</div>
-						</div>
-						<div class="player_buttons">
-							<button class="fold button">F</button>
-							<button class="check button">Ch</button>
-							<button class="call button">C</button>
-							<button class="raise button">R</button>
-							<button class="all-in button">A</button>
-						</div>
-					</div>
-
-					<div class="player player1">
-						<div class="player_radio">
-							<div>
-								<input type="radio" class="radio" id="player1" data-id="1" name="player" value="111" />
-								<label for="player1">player1</label>
-							</div>
-							<div class="stack">125</div>
-							<div class="player_position">BTN</div>
-						</div>
-						<div class="player_buttons">
-							<button class="fold button">F</button>
-							<button class="check button">Ch</button>
-							<button class="call button">C</button>
-							<button class="raise button">R</button>
-							<button class="all-in button">A</button>
-						</div>
-					</div>
-
-					<div class="player player8">
-						<div class="player_radio">
-							<div>
-								<input type="radio" class="radio" id="player8" data-id="8" name="player" value="888" />
-								<label for="player8">player8</label>
-							</div>
-							<div class="player_position">CO</div>
-						</div>
-						<div class="player_buttons">
-							<button class="fold button">F</button>
-							<button class="check button">Ch</button>
-							<button class="call button">C</button>
-							<button class="raise button">R</button>
-							<button class="all-in button">A</button>
+						<div class="board_street">
+							<div class="board_slot" data-card=""></div>
+							<div class="board_slot" data-card=""></div>
+							<div class="board_slot" data-card=""></div>
+							<div class="board_slot" data-card=""></div>
+							<div class="board_slot" data-card=""></div>
 						</div>
 					</div>
 				</div>
 			</div>
+
+<!--			<div class="col-12">-->
+<!--				<div class="board">-->
+
+<!--					<div class="board_line">-->
+<!--						<div class="player player4">-->
+<!--							<div class="player_radio">-->
+<!--								<div>-->
+<!--									<input type="radio" class="radio" id="player4" data-id="4" name="player" value="444" />-->
+<!--									<label for="player4">player4</label>-->
+<!--								</div>-->
+<!--								<div class="player_position">UTG</div>-->
+<!--							</div>-->
+<!--							<div class="player_buttons">-->
+<!--								<button class="fold button">F</button>-->
+<!--								<button class="check button">Ch</button>-->
+<!--								<button class="call button">C</button>-->
+<!--								<button class="raise button">R</button>-->
+<!--								<button class="all-in button">A</button>-->
+<!--							</div>-->
+<!--						</div>-->
+
+<!--						<div class="player player5">-->
+<!--							<div class="player_radio">-->
+<!--								<div>-->
+<!--									<input type="radio" class="radio" id="player5" data-id="5" name="player" value="555" />-->
+<!--									<label for="player5">player5</label>-->
+<!--								</div>-->
+<!--								<div class="player_position">UTG+1</div>-->
+<!--							</div>-->
+<!--							<div class="player_buttons">-->
+<!--								<button class="fold button">F</button>-->
+<!--								<button class="check button">Ch</button>-->
+<!--								<button class="call button">C</button>-->
+<!--								<button class="raise button">R</button>-->
+<!--								<button class="all-in button">A</button>-->
+<!--							</div>-->
+<!--						</div>-->
+
+<!--						<div class="player player6">-->
+<!--							<div class="player_radio">-->
+<!--								<div>-->
+<!--									<input type="radio" class="radio" id="player6" data-id="6" name="player" value="666" />-->
+<!--									<label for="player6">player6</label>-->
+<!--								</div>-->
+<!--								<div class="player_position">MP</div>-->
+<!--							</div>-->
+<!--							<div class="player_buttons">-->
+<!--								<button class="fold button">F</button>-->
+<!--								<button class="check button">Ch</button>-->
+<!--								<button class="call button">C</button>-->
+<!--								<button class="raise button">R</button>-->
+<!--								<button class="all-in button">A</button>-->
+<!--							</div>-->
+<!--						</div>-->
+<!--					</div>-->
+
+<!--					<div class="board_line">-->
+<!--						<div class="player player3">-->
+<!--							<div class="player_radio">-->
+<!--								<div>-->
+<!--									<input type="radio" class="radio" id="player3" data-id="3" name="player" value="333" />-->
+<!--									<label for="player3">player3</label>-->
+<!--								</div>-->
+<!--								<div class="player_position">BB</div>-->
+<!--							</div>-->
+<!--							<div class="player_buttons">-->
+<!--								<button class="fold button">F</button>-->
+<!--								<button class="check button">Ch</button>-->
+<!--								<button class="call button">C</button>-->
+<!--								<button class="raise button">R</button>-->
+<!--								<button class="all-in button">A</button>-->
+<!--							</div>-->
+<!--						</div>-->
+
+<!--						<div class="player_board">-->
+<!--							<div class="my_cards">-->
+<!--								<div class="board_slot" data-card=""></div>-->
+<!--								<div class="board_slot" data-card=""></div>-->
+<!--							</div>-->
+<!--							<div class="board_street">-->
+<!--								<div class="board_slot" data-card=""></div>-->
+<!--								<div class="board_slot" data-card=""></div>-->
+<!--								<div class="board_slot" data-card=""></div>-->
+<!--								<div class="board_slot" data-card=""></div>-->
+<!--								<div class="board_slot" data-card=""></div>-->
+<!--							</div>-->
+<!--						</div>-->
+
+<!--						<div class="player player7">-->
+<!--							<div class="player_radio">-->
+<!--								<div>-->
+<!--									<input type="radio" class="radio" id="player7" data-id="7" name="player" value="777" />-->
+<!--									<label for="player7">player7</label>-->
+<!--								</div>-->
+<!--								<div class="player_position">HJ</div>-->
+<!--							</div>-->
+<!--							<div class="player_buttons">-->
+<!--								<button class="fold button">F</button>-->
+<!--								<button class="check button">Ch</button>-->
+<!--								<button class="call button">C</button>-->
+<!--								<button class="raise button">R</button>-->
+<!--								<button class="all-in button">A</button>-->
+<!--							</div>-->
+<!--						</div>-->
+<!--					</div>-->
+
+<!--				<div class="board_line">-->
+<!--					<div class="player player2">-->
+<!--						<div class="player_radio">-->
+<!--							<div>-->
+<!--								<input type="radio" class="radio" id="player2" data-id="2" name="player" value="222" />-->
+<!--								<label for="player2">player2</label>-->
+<!--							</div>-->
+<!--							<div class="player_position">SB</div>-->
+<!--						</div>-->
+<!--						<div class="player_buttons">-->
+<!--							<button class="fold button">F</button>-->
+<!--							<button class="check button">Ch</button>-->
+<!--							<button class="call button">C</button>-->
+<!--							<button class="raise button">R</button>-->
+<!--							<button class="all-in button">A</button>-->
+<!--						</div>-->
+<!--					</div>-->
+
+<!--					<div class="player player1">-->
+<!--						<div class="player_radio">-->
+<!--							<div>-->
+<!--								<input type="radio" class="radio" id="player1" data-id="1" name="player" value="111" />-->
+<!--								<label for="player1">player1</label>-->
+<!--							</div>-->
+<!--							<div class="stack">125</div>-->
+<!--							<div class="player_position">BTN</div>-->
+<!--						</div>-->
+<!--						<div class="player_buttons">-->
+<!--							<button class="fold button">F</button>-->
+<!--							<button class="check button">Ch</button>-->
+<!--							<button class="call button">C</button>-->
+<!--							<button class="raise button">R</button>-->
+<!--							<button class="all-in button">A</button>-->
+<!--						</div>-->
+<!--					</div>-->
+
+<!--					<div class="player player8">-->
+<!--						<div class="player_radio">-->
+<!--							<div>-->
+<!--								<input type="radio" class="radio" id="player8" data-id="8" name="player" value="888" />-->
+<!--								<label for="player8">player8</label>-->
+<!--							</div>-->
+<!--							<div class="player_position">CO</div>-->
+<!--						</div>-->
+<!--						<div class="player_buttons">-->
+<!--							<button class="fold button">F</button>-->
+<!--							<button class="check button">Ch</button>-->
+<!--							<button class="call button">C</button>-->
+<!--							<button class="raise button">R</button>-->
+<!--							<button class="all-in button">A</button>-->
+<!--						</div>-->
+<!--					</div>-->
+<!--				</div>-->
+<!--			</div>-->
 
 <!--			<div class="col-12">-->
 <!--				<div class="board">-->

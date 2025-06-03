@@ -44,6 +44,19 @@ try {
 	$handData = $handStmt->fetch();
 	if (!$handData) throw new Exception("Раздача не найдена");
 
+	$stackStmt = $pdo->prepare("
+		SELECT SUM(amount) 
+		FROM actions 
+		WHERE hand_id = ? AND player_id IN (
+			SELECT player_id FROM actions 
+			WHERE hand_id = ? AND position = ?
+			LIMIT 1
+		)
+	");
+	$stackStmt->execute([$input['hand_id'], $input['hand_id'], $input['hero_position']]);
+	$totalBet = $stackStmt->fetchColumn() ?? 0;
+	$currentStack = $handData['hero_stack'] - $totalBet;
+
 	// Get all positions involved in this hand
 	$positionsStmt = $pdo->prepare("
         SELECT DISTINCT position 
@@ -334,7 +347,7 @@ try {
 		's' => substr($currentStreet, 0, 1),
 		'h' => [
 			'p' => $handData['hero_position'],
-			's' => round($handData['hero_stack'], 1),
+			's' => round($currentStack, 1),
 			'c' => $handData['hero_cards']
 		],
 		'b' => $handData['board'],
