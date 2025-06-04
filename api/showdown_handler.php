@@ -43,22 +43,16 @@ try {
 				throw new Exception("Invalid cards format for player {$player['player_id']}");
 			}
 
-			// Проверяем/добавляем игрока
+			// Просто проверяем существование игрока (без создания)
 			$stmt = $pdo->prepare("SELECT COUNT(*) FROM players WHERE player_id = ?");
 			$stmt->execute([$player['player_id']]);
 			if (!$stmt->fetchColumn()) {
-				// Получаем первую цифру ID игрока
-				$firstDigit = substr($player['player_id'], 0, 1);
-				// Если первая цифра не число, используем 0
-				$firstDigit = is_numeric($firstDigit) ? $firstDigit : '0';
-
-				$pdo->prepare("INSERT INTO players (player_id, nickname) VALUES (?, ?)")
-					->execute([$player['player_id'], 'Player' . $firstDigit]);
+				throw new Exception("Player {$player['player_id']} not found");
 			}
 
 			// Вставляем или обновляем showdown
 			$stmt = $pdo->prepare("
-                INSERT INTO showdowns (hand_id, player_id, cards)
+                INSERT INTO showdown (hand_id, player_id, cards)
                 VALUES (:hand_id, :player_id, :cards)
                 ON DUPLICATE KEY UPDATE cards = :cards
             ");
@@ -81,7 +75,7 @@ try {
 		// Фиксируем транзакцию
 		$pdo->commit();
 
-		// Обновляем статистику игроков после успешной записи
+		// Обновляем статистику игроков
 		foreach ($input['players'] as $player) {
 			updatePlayerStats($pdo, $player['player_id']);
 		}
@@ -103,37 +97,61 @@ try {
 	]);
 }
 
-function updatePlayerStats($pdo, $player_id) {
-	// Получаем текущие данные игрока
-	$stmt = $pdo->prepare("
-        SELECT hands_played, showdowns 
-        FROM players 
-        WHERE player_id = ?
-        FOR UPDATE
-    ");
-	$stmt->execute([$player_id]);
-	$stats = $stmt->fetch();
-
-	if (!$stats) return;
-
-	// Безопасное обновление WTSD (защита от деления на 0)
-	$new_showdowns = $stats['showdowns'] + 1;
-	$wtsd = ($stats['hands_played'] > 0)
-		? ($new_showdowns / $stats['hands_played']) * 100
-		: 0;
-
-	$stmt = $pdo->prepare("
+function updatePlayerStats($pdo, $player_id, $hand_id) {
+	// Увеличиваем счетчик шоудаунов и обновляем WTSD
+	$pdo->prepare("
         UPDATE players 
         SET 
-            showdowns = :showdowns,
-            wtsd = :wtsd,
+            showdowns = showdowns + 1,
+            wtsd = CASE 
+                WHEN hands_played > 0 THEN (showdowns + 1) * 100 / hands_played 
+                ELSE 0 
+            END,
             last_seen = NOW()
-        WHERE player_id = :player_id
+        WHERE player_id = ?
+    ")->execute([$player_id]);
+
+	// Проверяем, выиграл ли игрок раздачу (нет других активных игроков)
+	$stmt = $pdo->prepare("
+        SELECT COUNT(*) = 0 AS is_winner
+        FROM actions
+        WHERE hand_id = ?
+        AND player_id != ?
+        AND action_type != 'fold'
     ");
-	$stmt->execute([
-		':showdowns' => $new_showdowns,
-		':wtsd' => $wtsd,
-		':player_id' => $player_id
-	]);
+	$stmt->execute([$hand_id, $player_id]);
+	$is_winner = $stmt->fetchColumn();
+
+	// Если игрок выиграл, обновляем WSD
+	if ($is_winner) {
+		$pdo->prepare("
+            UPDATE players 
+            SET wsd = CASE 
+                WHEN showdowns > 0 THEN (
+                    SELECT COUNT(*) 
+                    FROM (
+                        SELECT DISTINCT h.hand_id
+                        FROM hands h
+                        JOIN showdown s ON h.hand_id = s.hand_id
+                        WHERE s.player_id = ?
+                        AND h.hand_id IN (
+                            SELECT hand_id 
+                            FROM showdown 
+                            WHERE player_id = ?
+                        )
+                        AND NOT EXISTS (
+                            SELECT 1 
+                            FROM actions a 
+                            WHERE a.hand_id = h.hand_id 
+                            AND a.player_id != ?
+                            AND a.action_type != 'fold'
+                        )
+                    ) AS won_hands
+                ) * 100 / GREATEST(showdowns, 1)
+                ELSE 0
+            END
+            WHERE player_id = ?
+        ")->execute([$player_id, $player_id, $player_id, $player_id]);
+	}
 }
 ?>
