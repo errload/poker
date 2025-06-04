@@ -99,7 +99,7 @@ document
 				.forEach((elem, key) => {
 					if (elem.value === this.value) current_position = key
 					elem.dataset.action = 'active'
-					elem.nextSibling.style.color = '#e7e7e7' // label
+					elem.nextSibling.style.color = '#000000' // label
 				})
 
 			new_position_ids = [
@@ -153,8 +153,8 @@ document
 			const board_slot4 = document.querySelectorAll('.board_street .board_slot')[3]
 			const board_slot5 = document.querySelectorAll('.board_street .board_slot')[4]
 
-			const line_result = document.querySelector('.line_result')
-			const line_bids = document.querySelector('.line_bids')
+			// const line_result = document.querySelector('.line_result')
+			// const line_bids = document.querySelector('.line_bids')
 
 			if (!my_slot1.textContent) {
 				my_slot1.textContent = this.textContent
@@ -290,7 +290,7 @@ document
 			.forEach(elem => {
 				player_ids.push(elem.dataset.id)
 				elem.dataset.action = 'active'
-				elem.nextSibling.style.color = '#e7e7e7' // label
+				elem.nextSibling.style.color = '#000000' // label
 			})
 
 		const last_position = player_ids.shift()
@@ -448,27 +448,6 @@ document
 		addBidDescription(`${current_element.value}:fold`)
 		start_position++
 		if (start_position > 7) start_position = 0
-
-		// const player = this.closest('.player')
-		// const position = player.querySelector('.player_position').textContent
-		// console.log(bid_counter)
-		//
-		// player.querySelector('.player_buttons').style.display = 'none'
-		//
-		// const result = await sendAjax('/4bet/api/action_handler.php', {
-		// 	'hand_id': hand_id,
-		// 	'player_id': player.querySelector('.radio').value,
-		// 	"street": getBoardStatus(),
-		// 	'action_type': 'fold',
-		// 	'amount': null,
-		// 	'position': position
-		// })
-		//
-		// addBidDescription(`${position}:fold`)
-		//
-		// // player.querySelector('.stack_cards .stack').textContent = result.new_stack
-		// console.log(result)
-		// showNotification('fold')
 	})
 
 // call
@@ -481,35 +460,220 @@ document
 		const current_element = getCurrentPosition()
 		if (!current_element) return false
 
-
-
+		await sendAjax('/4bet/api/action_handler.php', {
+			'hand_id': hand_id,
+			'player_id': current_element.dataset.id,
+			"street": getBoardStatus(),
+			'action_type': 'call',
+			'amount': bid_counter,
+			'position': current_element.value
+		})
 
 		addBidDescription(`${current_element.value}:call ${bid_counter} bb`)
 		start_position++
 		if (start_position > 7) start_position = 0
+	})
 
+document
+	.querySelector('.check')
+	.addEventListener('click', async function () {
+		if (getBoardStatus() === 'showdown') return false
+		if (!document.querySelectorAll('[name="position"]:checked').length) return false
+
+		const current_element = getCurrentPosition()
+		if (!current_element) return false
+
+		await sendAjax('/4bet/api/action_handler.php', {
+			'hand_id': hand_id,
+			'player_id': current_element.dataset.id,
+			"street": getBoardStatus(),
+			'action_type': 'check',
+			'amount': null,
+			'position': current_element.value
+		})
+
+		addBidDescription(`${current_element.value}:fold`)
+		start_position++
+		if (start_position > 7) start_position = 0
+	})
+
+document
+	.querySelector('.raise')
+	.addEventListener('click', async function () {
+		if (getBoardStatus() === 'showdown') return false
+		if (!document.querySelectorAll('[name="position"]:checked').length) return false
 
 		// const player = this.closest('.player')
 		// const position = player.querySelector('.player_position').textContent
-		// // changeSelectStack(player, false)
-		// console.log(bid_counter)
+
+		const overlay = document.createElement('div')
+		overlay.classList.add('popup-overlay')
+		const popup = document.createElement('div')
+		popup.classList.add('popup-window')
+
+		const addBidRaise = (sum) => {
+			const bid_raise = document.createElement('div')
+			bid_raise.classList.add('bid_raise')
+			bid_raise.textContent = sum
+			return bid_raise
+		};
+
+		const bidRows = [
+			[1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2],
+			[2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3],
+			[3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 4],
+			[4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 5],
+			[5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9, 6],
+			[6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 7],
+			[7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 8],
+			[8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.8, 8.8, 8.9, 9],
+			[9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.9, 9.9, 9.9, 10],
+			[11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+			[22, 24, 26, 28, 30, 32, 34, 36, 38, 40],
+			[42, 44, 46, 48, 50],
+			[55, 60, 65, 70, 75, 80, 85, 90, 95]
+		]
+
+		bidRows.forEach(row => {
+			const rowContainer = document.createElement('div')
+			rowContainer.classList.add('bid-row')
+			row.forEach(bid => { rowContainer.appendChild(addBidRaise(bid)) })
+			popup.appendChild(rowContainer)
+		})
+
+		overlay.appendChild(popup)
+		document.body.appendChild(overlay)
+
+		document.querySelector('.popup-overlay').addEventListener('click', e => {
+			if (!e.target.classList.contains('popup-overlay')) return false
+			document.body.removeChild(overlay)
+		})
+
+		document
+			.querySelectorAll('.bid_raise')
+			.forEach(bid_raise => {
+				bid_raise.addEventListener('click', async (e) => {
+					bid_counter = parseFloat(e.target.textContent)
+
+					const current_element = getCurrentPosition()
+					if (!current_element) return false
+
+					await sendAjax('/4bet/api/action_handler.php', {
+						'hand_id': hand_id,
+						'player_id': current_element.dataset.id,
+						"street": getBoardStatus(),
+						'action_type': 'raise',
+						'amount': bid_counter,
+						'position': current_element.value
+					})
+
+					addBidDescription(`${current_element.value}:raise ${bid_counter} bb`)
+					start_position++
+					if (start_position > 7) start_position = 0
+					document.body.removeChild(overlay)
+				})
+			})
+	})
+
+document
+	.querySelector('.all-in')
+	.addEventListener('click', async function () {
+		if (getBoardStatus() === 'showdown') return false
+		if (!document.querySelectorAll('[name="position"]:checked').length) return false
+
+		// const player = this.closest('.player')
+		// const position = player.querySelector('.player_position').textContent
+
+		const overlay = document.createElement('div')
+		overlay.classList.add('popup-overlay')
+		const popup = document.createElement('div')
+		popup.classList.add('popup-window')
+
+		const addBidRaise = (sum) => {
+			const bid_raise = document.createElement('div')
+			bid_raise.classList.add('bid_raise')
+			bid_raise.textContent = sum
+			return bid_raise
+		};
+
+		const bidRows = [
+			[1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2],
+			[2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8, 2.9, 3],
+			[3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 4],
+			[4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 5],
+			[5.1, 5.2, 5.3, 5.4, 5.5, 5.6, 5.7, 5.8, 5.9, 6],
+			[6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 6.8, 6.9, 7],
+			[7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 7.8, 7.9, 8],
+			[8.1, 8.2, 8.3, 8.4, 8.5, 8.6, 8.8, 8.8, 8.9, 9],
+			[9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.9, 9.9, 9.9, 10],
+			[11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+			[22, 24, 26, 28, 30, 32, 34, 36, 38, 40],
+			[42, 44, 46, 48, 50],
+			[55, 60, 65, 70, 75, 80, 85, 90, 95]
+		]
+
+		bidRows.forEach(row => {
+			const rowContainer = document.createElement('div')
+			rowContainer.classList.add('bid-row')
+			row.forEach(bid => { rowContainer.appendChild(addBidRaise(bid)) })
+			popup.appendChild(rowContainer)
+		})
+
+		overlay.appendChild(popup)
+		document.body.appendChild(overlay)
+
+		document.querySelector('.popup-overlay').addEventListener('click', e => {
+			if (!e.target.classList.contains('popup-overlay')) return false
+			document.body.removeChild(overlay)
+		})
+
+		document
+			.querySelectorAll('.bid_raise')
+			.forEach(bid_raise => {
+				bid_raise.addEventListener('click', async (e) => {
+					bid_counter = parseFloat(e.target.textContent)
+
+					const current_element = getCurrentPosition()
+					if (!current_element) return false
+					current_element.dataset.action = 'inactive'
+					current_element.nextSibling.style.color = '#e7e7e7' // label
+
+					await sendAjax('/4bet/api/action_handler.php', {
+						'hand_id': hand_id,
+						'player_id': current_element.dataset.id,
+						"street": getBoardStatus(),
+						'action_type': 'all-in',
+						'amount': bid_counter,
+						'position': current_element.value
+					})
+
+					addBidDescription(`${current_element.value}:all-in ${bid_counter} bb`)
+					start_position++
+					if (start_position > 7) start_position = 0
+					document.body.removeChild(overlay)
+				})
+			})
+	})
+
+
+
+
+		// const current_element = getCurrentPosition()
+		// if (!current_element) return false
 		//
-		// const result = await sendAjax('/4bet/api/action_handler.php', {
+		// await sendAjax('/4bet/api/action_handler.php', {
 		// 	'hand_id': hand_id,
-		// 	'player_id': player.querySelector('.radio').value,
+		// 	'player_id': current_element.dataset.id,
 		// 	"street": getBoardStatus(),
-		// 	'action_type': 'call',
-		// 	'amount': bid_counter,
-		// 	'position': player.querySelector('.player_position').textContent,
-		// 	// 'current_stack': player.querySelector('.stack_cards .stack').textContent
+		// 	'action_type': 'check',
+		// 	'amount': null,
+		// 	'position': current_element.value
 		// })
 		//
-		// addBidDescription(`${position}:coll ${bid_counter} bb`)
-		//
-		// // player.querySelector('.stack_cards .stack').textContent = result.new_stack
-		// console.log(result)
-		// showNotification('call')
-	})
+		// addBidDescription(`${current_element.value}:fold`)
+		// start_position++
+		// if (start_position > 7) start_position = 0
+	// })
 
 
 
