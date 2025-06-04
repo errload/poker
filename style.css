@@ -229,6 +229,7 @@ label {
 
 .stack {
     border: 1px solid #939393;
+    /*border: 1px solid #e7e7e7;*/
     padding: 3px 5px;
     width: 60px;
     height: 35px;

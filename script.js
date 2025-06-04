@@ -22,10 +22,7 @@ document
 	.querySelectorAll('[name="position"]')
 	.forEach((position, key) => {
 		position.dataset.id = generateRandomId()
-		if (key === 0) {
-			position.checked = true
-			position.dataset.id = position_id
-		}
+		if (key === 0) position.dataset.id = position_id
 		document.querySelectorAll('[name="board_stady"]')[0].checked = true
 		position_ids.push(position.dataset.id)
 	})
@@ -46,6 +43,7 @@ const setStreetBidCounter = () => {
 	}
 }
 
+// отображение ставки
 const addBidDescription = description => {
 	const bid_description = document.createElement('div')
 	bid_description.classList.add('bid_description')
@@ -100,6 +98,8 @@ document
 				.querySelectorAll('[name="position"]')
 				.forEach((elem, key) => {
 					if (elem.value === this.value) current_position = key
+					elem.dataset.action = 'active'
+					elem.nextSibling.style.color = '#e7e7e7' // label
 				})
 
 			new_position_ids = [
@@ -140,6 +140,8 @@ document
 	.querySelectorAll('.slots .slot')
 	.forEach(elem => {
 		elem.addEventListener('click', async function () {
+			if (!document.querySelectorAll('[name="position"]:checked').length) return false
+
 			const classCard = (this.className).split(' ')[1]
 			let cards = null
 
@@ -207,10 +209,10 @@ document
 					board: cards
 				});
 
-				setStreetBidCounter()
-				line_result.textContent = ''
-				line_bids.textContent = ''
-				document.querySelectorAll('[name="board_stady"]')[1].checked = true
+				// setStreetBidCounter()
+				// line_result.textContent = ''
+				// line_bids.textContent = ''
+				document.querySelectorAll('[name="board_stady"]')[1].click()
 				return false
 			}
 
@@ -229,10 +231,10 @@ document
 					board: cards
 				});
 
-				setStreetBidCounter()
-				line_result.textContent = ''
-				line_bids.textContent = ''
-				document.querySelectorAll('[name="board_stady"]')[2].checked = true
+				// setStreetBidCounter()
+				// line_result.textContent = ''
+				// line_bids.textContent = ''
+				document.querySelectorAll('[name="board_stady"]')[2].click()
 				return false
 			}
 
@@ -252,10 +254,10 @@ document
 					board: cards
 				});
 
-				setStreetBidCounter()
-				line_result.textContent = ''
-				line_bids.textContent = ''
-				document.querySelectorAll('[name="board_stady"]')[3].checked = true
+				// setStreetBidCounter()
+				// line_result.textContent = ''
+				// line_bids.textContent = ''
+				document.querySelectorAll('[name="board_stady"]')[3].click()
 				return false
 			}
 		})
@@ -265,6 +267,8 @@ document
 document
 	.querySelector('.reset')
 	.addEventListener('click', async () => {
+		if (!document.querySelectorAll('[name="position"]:checked').length) return false
+
 		let current_index = null
 		let next_index = null
 
@@ -285,6 +289,8 @@ document
 			.querySelectorAll('[name="position"]')
 			.forEach(elem => {
 				player_ids.push(elem.dataset.id)
+				elem.dataset.action = 'active'
+				elem.nextSibling.style.color = '#e7e7e7' // label
 			})
 
 		const last_position = player_ids.shift()
@@ -321,6 +327,8 @@ document
 document
 	.querySelector('.stack')
 	.addEventListener('click', () => {
+		if (!document.querySelectorAll('[name="position"]:checked').length) return false
+
 		const overlay = document.createElement('div')
 		overlay.classList.add('popup-overlay')
 		const popup = document.createElement('div')
@@ -380,23 +388,66 @@ document
 			})
 	})
 
+// смена улицы
+document
+	.querySelectorAll('[name="board_stady"]')
+	.forEach(elem => {
+		elem.addEventListener('change', function () {
+			document.querySelector('.line_result').textContent = ''
+			document.querySelector('.line_bids').textContent = ''
+			setStreetBidCounter()
+			console.log(start_position)
+		})
+	})
+
+// поиск следующей позиции для ставки
+const getCurrentPosition = () => {
+	const elements = document.querySelectorAll('[name="position"]')
+	const current_element = document.querySelectorAll('[name="position"]')[start_position]
+	let found_element = null
+
+	if (current_element) {
+		const start_index = Array.from(elements).indexOf(current_element)
+
+		if (start_index !== -1) {
+			for (let i = 0; i < elements.length; i++) {
+				const current_index = (start_index + i) % elements.length
+				if (elements[current_index].dataset.action === 'active') {
+					found_element = elements[current_index]
+					start_position = current_index
+					break
+				}
+			}
+		}
+	}
+
+	return found_element
+}
+
 // fold
 document
 	.querySelector('.fold')
 	.addEventListener('click', async function () {
+		if (getBoardStatus() === 'showdown') return false
+		if (!document.querySelectorAll('[name="position"]:checked').length) return false
 
-		let current_position = document.querySelectorAll('[name="position"]')[start_position]
-		if (!current_position) {
-			start_position = 0
-			current_position = document.querySelectorAll('[name="position"]')[start_position]
-		}
+		const current_element = getCurrentPosition()
+		if (!current_element) return false
+		current_element.dataset.action = 'inactive'
+		current_element.nextSibling.style.color = '#e7e7e7' // label
 
-		console.log(start_position)
-		addBidDescription(`${current_position.value}:fold`)
+		await sendAjax('/4bet/api/action_handler.php', {
+			'hand_id': hand_id,
+			'player_id': current_element.dataset.id,
+			"street": getBoardStatus(),
+			'action_type': 'fold',
+			'amount': null,
+			'position': current_element.value
+		})
 
-
-
+		addBidDescription(`${current_element.value}:fold`)
 		start_position++
+		if (start_position > 7) start_position = 0
 
 		// const player = this.closest('.player')
 		// const position = player.querySelector('.player_position').textContent
@@ -420,6 +471,45 @@ document
 		// showNotification('fold')
 	})
 
+// call
+document
+	.querySelector('.call')
+	.addEventListener('click', async function () {
+		if (getBoardStatus() === 'showdown') return false
+		if (!document.querySelectorAll('[name="position"]:checked').length) return false
+
+		const current_element = getCurrentPosition()
+		if (!current_element) return false
+
+
+
+
+		addBidDescription(`${current_element.value}:call ${bid_counter} bb`)
+		start_position++
+		if (start_position > 7) start_position = 0
+
+
+		// const player = this.closest('.player')
+		// const position = player.querySelector('.player_position').textContent
+		// // changeSelectStack(player, false)
+		// console.log(bid_counter)
+		//
+		// const result = await sendAjax('/4bet/api/action_handler.php', {
+		// 	'hand_id': hand_id,
+		// 	'player_id': player.querySelector('.radio').value,
+		// 	"street": getBoardStatus(),
+		// 	'action_type': 'call',
+		// 	'amount': bid_counter,
+		// 	'position': player.querySelector('.player_position').textContent,
+		// 	// 'current_stack': player.querySelector('.stack_cards .stack').textContent
+		// })
+		//
+		// addBidDescription(`${position}:coll ${bid_counter} bb`)
+		//
+		// // player.querySelector('.stack_cards .stack').textContent = result.new_stack
+		// console.log(result)
+		// showNotification('call')
+	})
 
 
 
@@ -815,33 +905,33 @@ document
 // 		})
 // 	})
 
-// click call
-document
-	.querySelectorAll('.player .call')
-	.forEach(elem => {
-		elem.addEventListener('click', async function () {
-			const player = this.closest('.player')
-			const position = player.querySelector('.player_position').textContent
-			// changeSelectStack(player, false)
-			console.log(bid_counter)
-
-			const result = await sendAjax('/4bet/api/action_handler.php', {
-				'hand_id': hand_id,
-				'player_id': player.querySelector('.radio').value,
-				"street": getBoardStatus(),
-				'action_type': 'call',
-				'amount': bid_counter,
-				'position': player.querySelector('.player_position').textContent,
-				// 'current_stack': player.querySelector('.stack_cards .stack').textContent
-			})
-
-			addBidDescription(`${position}:coll ${bid_counter} bb`)
-
-			// player.querySelector('.stack_cards .stack').textContent = result.new_stack
-			console.log(result)
-			showNotification('call')
-		})
-	})
+// // click call
+// document
+// 	.querySelectorAll('.player .call')
+// 	.forEach(elem => {
+// 		elem.addEventListener('click', async function () {
+// 			const player = this.closest('.player')
+// 			const position = player.querySelector('.player_position').textContent
+// 			// changeSelectStack(player, false)
+// 			console.log(bid_counter)
+//
+// 			const result = await sendAjax('/4bet/api/action_handler.php', {
+// 				'hand_id': hand_id,
+// 				'player_id': player.querySelector('.radio').value,
+// 				"street": getBoardStatus(),
+// 				'action_type': 'call',
+// 				'amount': bid_counter,
+// 				'position': player.querySelector('.player_position').textContent,
+// 				// 'current_stack': player.querySelector('.stack_cards .stack').textContent
+// 			})
+//
+// 			addBidDescription(`${position}:coll ${bid_counter} bb`)
+//
+// 			// player.querySelector('.stack_cards .stack').textContent = result.new_stack
+// 			console.log(result)
+// 			showNotification('call')
+// 		})
+// 	})
 
 // click check
 document
