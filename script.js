@@ -1,8 +1,10 @@
-const positions = ['CO', 'HJ', 'MP', 'UTG+1', 'UTG', 'BB', 'SB', 'BTN']
+const positions = ['SB', 'BB', 'UTG', 'UTG+1', 'MP', 'HJ', 'CO', 'BTN']
+let actions = []
 let hand_id = null
-let bid_counter = 1
+let bid_counter = 1 // начало раздачи, по умолчанию ставка 1BB
 let position_id = 999999
 let position_ids = []
+let start_position = 2 // начало раздачи, UTG
 
 // получение рандомного ID
 function generateRandomId(length = 6) {
@@ -35,8 +37,20 @@ const getBoardStatus = () => {
 
 // обнуление bid_counter
 const setStreetBidCounter = () => {
-	if (getBoardStatus() === 'preflop') bid_counter = 1
-	else bid_counter = 0
+	if (getBoardStatus() === 'preflop') {
+		bid_counter = 1
+		start_position = 2
+	} else {
+		bid_counter = 0
+		start_position = 0
+	}
+}
+
+const addBidDescription = description => {
+	const bid_description = document.createElement('div')
+	bid_description.classList.add('bid_description')
+	bid_description.textContent = description
+	document.querySelector('.line_bids').appendChild(bid_description)
 }
 
 // отправка ajax
@@ -63,37 +77,6 @@ document
 		this.value = 'kick'
 	})
 
-// выбор позиции
-document
-	.querySelectorAll('[name="position"]')
-	.forEach(elem => {
-		elem.addEventListener('change', async function () {
-			let current_position = null
-			document
-				.querySelectorAll('[name="position"]')
-				.forEach((elem, key) => {
-					if (elem.value === this.value) current_position = key
-				})
-
-			new_position_ids = [
-				...position_ids.slice(-current_position),
-				...position_ids.slice(0, -current_position)
-			];
-
-			for (let i = 0; i < 8; i++) document
-				.querySelectorAll('[name="position"]')[i]
-				.dataset.id = new_position_ids[i]
-
-			const result = await sendAjax('/4bet/api/new_hand_mysql.php', {
-				hero_position: document.querySelector('[name="position"][data-id="999999"]').value,
-				hero_stack: document.querySelector('.stack').textContent,
-				hero_cards: null
-			})
-
-			hand_id = result.hand_id
-		})
-	})
-
 // чистка БД
 document
 	.querySelector('.clear')
@@ -104,63 +87,52 @@ document
 			})
 	})
 
-
-// сброс раздачи
+// выбор позиции
 document
-	.querySelector('.reset')
-	.addEventListener('click', async () => {
-		let counter = null
-		let current_position = document.querySelector('[name="position"]:checked')
+	.querySelectorAll('[name="position"]')
+	.forEach(elem => {
+		elem.addEventListener('change', async function () {
+			let current_position = null
+			actions = []
+			actions.splice(actions.length, 0, ...positions)
 
-		// смена позиции на 1
-		if (!current_position) {
-			document.querySelectorAll('[name="position"]')[0].checked = true
-			current_position = document.querySelector('[name="position"]:checked')
-		}
+			document
+				.querySelectorAll('[name="position"]')
+				.forEach((elem, key) => {
+					if (elem.value === this.value) current_position = key
+				})
 
-		positions.forEach((value, key) => {
-			if (current_position.value !== value) return
-			counter = key + 1
-			return false
-		})
+			new_position_ids = [
+				...position_ids.slice(-current_position),
+				...position_ids.slice(0, -current_position)
+			]
 
-		if (counter > 7) counter = 0
-		document.querySelectorAll('[name="position"]')[counter].checked = true
-		document.querySelectorAll('[name="board_stady"]')[0].checked = true
+			for (let i = 0; i < 8; i++) document
+				.querySelectorAll('[name="position"]')[i]
+				.dataset.id = new_position_ids[i]
 
-		// сдвиг ID игроков на 1
-		player_ids = []
-		document
-			.querySelectorAll('[name="position"]')
-			.forEach(elem => {
-				player_ids.push(elem.dataset.id)
+			// чистка борда
+			document
+				.querySelectorAll('.board_slot')
+				.forEach(elem => {
+					elem.textContent = ''
+					elem.dataset.card = ''
+					elem.classList.remove('red', 'blue', 'green', 'black')
+				})
+
+			document.querySelector('.line_result').textContent = ''
+			document.querySelector('.line_bids').textContent = ''
+			document.querySelectorAll('[name="board_stady"]')[0].checked = true
+
+			const result = await sendAjax('/4bet/api/new_hand_mysql.php', {
+				hero_position: document.querySelector('[name="position"][data-id="999999"]').value,
+				hero_stack: document.querySelector('.stack').textContent,
+				hero_cards: null
 			})
 
-		const last_position = player_ids.pop()
-		player_ids.unshift(last_position)
-		for (let i = 0; i < 8; i++) {
-			bb = document.querySelectorAll('[name="position"]')[i]
-			bb.dataset.id = player_ids[i]
-		}
-
-		setStreetBidCounter()
-
-		// чистка борда
-		document
-			.querySelectorAll('.board_slot')
-			.forEach(elem => {
-				elem.textContent = ''
-				elem.dataset.card = ''
-				elem.classList.remove('red', 'blue', 'green', 'black')
-			})
-
-		const result = await sendAjax('/4bet/api/new_hand_mysql.php', {
-			hero_position: document.querySelector('[name="position"][data-id="999999"]').value,
-			hero_stack: document.querySelector('.stack').textContent,
-			hero_cards: null
+			hand_id = result.hand_id
+			setStreetBidCounter()
 		})
-
-		hand_id = result.hand_id
 	})
 
 // выбор карт
@@ -180,7 +152,7 @@ document
 			const board_slot5 = document.querySelectorAll('.board_street .board_slot')[4]
 
 			const line_result = document.querySelector('.line_result')
-			const line_bids = document.querySelector('.line_result')
+			const line_bids = document.querySelector('.line_bids')
 
 			if (!my_slot1.textContent) {
 				my_slot1.textContent = this.textContent
@@ -289,6 +261,62 @@ document
 		})
 	})
 
+// сброс раздачи
+document
+	.querySelector('.reset')
+	.addEventListener('click', async () => {
+		let current_index = null
+		let next_index = null
+
+		const radios = document.querySelectorAll('[name="position"]')
+		actions = []
+		actions.splice(actions.length, 0, ...positions)
+
+		// смена позиции на 1
+		current_index = Array
+			.from(radios)
+			.findIndex(radio => radio.checked)
+		next_index = (current_index - 1 + radios.length) % radios.length
+		radios[next_index].checked = true
+
+		// сдвиг ID игроков на 1
+		player_ids = []
+		document
+			.querySelectorAll('[name="position"]')
+			.forEach(elem => {
+				player_ids.push(elem.dataset.id)
+			})
+
+		const last_position = player_ids.shift()
+		player_ids.push(last_position)
+		for (let i = 0; i < 8; i++) {
+			bb = document.querySelectorAll('[name="position"]')[i]
+			bb.dataset.id = player_ids[i]
+		}
+
+		// чистка борда
+		document
+			.querySelectorAll('.board_slot')
+			.forEach(elem => {
+				elem.textContent = ''
+				elem.dataset.card = ''
+				elem.classList.remove('red', 'blue', 'green', 'black')
+			})
+
+		document.querySelector('.line_result').textContent = ''
+		document.querySelector('.line_bids').textContent = ''
+		document.querySelectorAll('[name="board_stady"]')[0].checked = true
+
+		const result = await sendAjax('/4bet/api/new_hand_mysql.php', {
+			hero_position: document.querySelector('[name="position"][data-id="999999"]').value,
+			hero_stack: document.querySelector('.stack').textContent,
+			hero_cards: null
+		})
+
+		hand_id = result.hand_id
+		setStreetBidCounter()
+	})
+
 // обновление стека
 document
 	.querySelector('.stack')
@@ -352,6 +380,45 @@ document
 			})
 	})
 
+// fold
+document
+	.querySelector('.fold')
+	.addEventListener('click', async function () {
+
+		let current_position = document.querySelectorAll('[name="position"]')[start_position]
+		if (!current_position) {
+			start_position = 0
+			current_position = document.querySelectorAll('[name="position"]')[start_position]
+		}
+
+		console.log(start_position)
+		addBidDescription(`${current_position.value}:fold`)
+
+
+
+		start_position++
+
+		// const player = this.closest('.player')
+		// const position = player.querySelector('.player_position').textContent
+		// console.log(bid_counter)
+		//
+		// player.querySelector('.player_buttons').style.display = 'none'
+		//
+		// const result = await sendAjax('/4bet/api/action_handler.php', {
+		// 	'hand_id': hand_id,
+		// 	'player_id': player.querySelector('.radio').value,
+		// 	"street": getBoardStatus(),
+		// 	'action_type': 'fold',
+		// 	'amount': null,
+		// 	'position': position
+		// })
+		//
+		// addBidDescription(`${position}:fold`)
+		//
+		// // player.querySelector('.stack_cards .stack').textContent = result.new_stack
+		// console.log(result)
+		// showNotification('fold')
+	})
 
 
 
@@ -371,12 +438,12 @@ document
 // 	elem.textContent = ''
 // }
 
-const addBidDescription = description => {
-	const bid_description = document.createElement('div')
-	bid_description.classList.add('bid_description')
-	bid_description.textContent = description
-	document.querySelector('.line_bids').appendChild(bid_description)
-}
+// const addBidDescription = description => {
+// 	const bid_description = document.createElement('div')
+// 	bid_description.classList.add('bid_description')
+// 	bid_description.textContent = description
+// 	document.querySelector('.line_bids').appendChild(bid_description)
+// }
 
 // function showNotification(message) {
 // 	const notification = document.getElementById('notification')
@@ -719,34 +786,34 @@ const addBidDescription = description => {
 
 
 
-// click fold
-document
-	.querySelectorAll('.player .fold')
-	.forEach(elem => {
-		elem.addEventListener('click', async function () {
-			const player = this.closest('.player')
-			const position = player.querySelector('.player_position').textContent
-			console.log(bid_counter)
-
-			player.querySelector('.player_buttons').style.display = 'none'
-
-			const result = await sendAjax('/4bet/api/action_handler.php', {
-				'hand_id': hand_id,
-				'player_id': player.querySelector('.radio').value,
-				"street": getBoardStatus(),
-				'action_type': 'fold',
-				'amount': null,
-				'position': position,
-				// 'current_stack': player.querySelector('.stack_cards .stack').textContent
-			})
-
-			addBidDescription(`${position}:fold`)
-
-			// player.querySelector('.stack_cards .stack').textContent = result.new_stack
-			console.log(result)
-			showNotification('fold')
-		})
-	})
+// // click fold
+// document
+// 	.querySelectorAll('.player .fold')
+// 	.forEach(elem => {
+// 		elem.addEventListener('click', async function () {
+// 			const player = this.closest('.player')
+// 			const position = player.querySelector('.player_position').textContent
+// 			console.log(bid_counter)
+//
+// 			player.querySelector('.player_buttons').style.display = 'none'
+//
+// 			const result = await sendAjax('/4bet/api/action_handler.php', {
+// 				'hand_id': hand_id,
+// 				'player_id': player.querySelector('.radio').value,
+// 				"street": getBoardStatus(),
+// 				'action_type': 'fold',
+// 				'amount': null,
+// 				'position': position,
+// 				// 'current_stack': player.querySelector('.stack_cards .stack').textContent
+// 			})
+//
+// 			addBidDescription(`${position}:fold`)
+//
+// 			// player.querySelector('.stack_cards .stack').textContent = result.new_stack
+// 			console.log(result)
+// 			showNotification('fold')
+// 		})
+// 	})
 
 // click call
 document
