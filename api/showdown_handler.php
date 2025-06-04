@@ -2,6 +2,8 @@
 header('Content-Type: application/json');
 require_once __DIR__.'/../db/config.php';
 
+$response = ['success' => false];
+
 try {
 	$pdo = new PDO(
 		"mysql:host=".DB_HOST.";dbname=".DB_NAME.";charset=utf8mb4",
@@ -14,40 +16,63 @@ try {
 	);
 
 	$input = json_decode(file_get_contents('php://input'), true);
-	if (!$input) throw new Exception('Invalid JSON input');
+	if (!$input) {
+		$response['error'] = 'Invalid JSON input';
+		echo json_encode($response);
+		exit;
+	}
 
-	// Обязательные поля
-	$required = ['hand_id', 'players'];
-	foreach ($required as $field) {
-		if (!isset($input[$field])) throw new Exception("Missing required field: $field");
+	// Проверка обязательных полей
+	if (!isset($input['hand_id'])) {
+		$response['error'] = "Missing required field: hand_id";
+		echo json_encode($response);
+		exit;
+	}
+
+	if (!isset($input['players']) || !is_array($input['players'])) {
+		$response['error'] = "Players data must be an array";
+		echo json_encode($response);
+		exit;
 	}
 
 	// Проверяем существование руки
 	$stmt = $pdo->prepare("SELECT COUNT(*) FROM hands WHERE hand_id = ?");
 	$stmt->execute([$input['hand_id']]);
 	if (!$stmt->fetchColumn()) {
-		throw new Exception("Hand not found");
+		$response['error'] = "Hand not found";
+		echo json_encode($response);
+		exit;
 	}
 
 	// Начинаем транзакцию
 	$pdo->beginTransaction();
 
+	$processedPlayers = [];
+	$errors = [];
+
 	try {
 		// Обрабатываем каждого игрока
 		foreach ($input['players'] as $player) {
 			if (!isset($player['player_id']) || !isset($player['cards'])) {
-				throw new Exception("Each player must have player_id and cards");
+				$errors[] = "Each player must have player_id and cards";
+				continue;
 			}
 
-			if (strlen($player['cards']) != 4 && strlen($player['cards']) != 5) {
-				throw new Exception("Invalid cards format for player {$player['player_id']}");
+			$playerId = $player['player_id'];
+			$processedPlayers[] = $playerId;
+
+			// Проверка формата карт
+			if (!preg_match('/^([2-9TJQKA][hdcs]){1,2}$/i', $player['cards'])) {
+				$errors[] = "Invalid cards format for player {$playerId}. Valid examples: '7c6s', 'Ah', 'KdJc'";
+				continue;
 			}
 
-			// Просто проверяем существование игрока (без создания)
+			// Проверяем существование игрока
 			$stmt = $pdo->prepare("SELECT COUNT(*) FROM players WHERE player_id = ?");
-			$stmt->execute([$player['player_id']]);
+			$stmt->execute([$playerId]);
 			if (!$stmt->fetchColumn()) {
-				throw new Exception("Player {$player['player_id']} not found");
+				$errors[] = "Player {$playerId} not found";
+				continue;
 			}
 
 			// Вставляем или обновляем showdown
@@ -58,9 +83,21 @@ try {
             ");
 			$stmt->execute([
 				':hand_id' => $input['hand_id'],
-				':player_id' => $player['player_id'],
+				':player_id' => $playerId,
 				':cards' => $player['cards']
 			]);
+
+			// Обновляем статистику игрока
+			updatePlayerStats($pdo, $playerId, $input['hand_id']);
+		}
+
+		// Если есть ошибки, откатываем транзакцию
+		if (!empty($errors)) {
+			$pdo->rollBack();
+			$response['error'] = implode("; ", $errors);
+			$response['processed_players'] = $processedPlayers;
+			echo json_encode($response);
+			exit;
 		}
 
 		// Помечаем руку как завершенную
@@ -72,30 +109,25 @@ try {
         ");
 		$stmt->execute([$input['hand_id']]);
 
-		// Фиксируем транзакцию
 		$pdo->commit();
 
-		// Обновляем статистику игроков
-		foreach ($input['players'] as $player) {
-			updatePlayerStats($pdo, $player['player_id']);
-		}
-
-		echo json_encode([
+		$response = [
 			'success' => true,
-			'message' => 'Showdown recorded for ' . count($input['players']) . ' players'
-		]);
+			'message' => 'Showdown recorded for ' . count($input['players']) . ' players',
+			'hand_id' => $input['hand_id'],
+			'players_processed' => $processedPlayers
+		];
 
 	} catch (Exception $e) {
 		$pdo->rollBack();
-		throw $e;
+		$response['error'] = $e->getMessage();
 	}
 
 } catch (Exception $e) {
-	echo json_encode([
-		'success' => false,
-		'error' => $e->getMessage()
-	]);
+	$response['error'] = $e->getMessage();
 }
+
+echo json_encode($response);
 
 function updatePlayerStats($pdo, $player_id, $hand_id) {
 	// Увеличиваем счетчик шоудаунов и обновляем WTSD
@@ -111,7 +143,7 @@ function updatePlayerStats($pdo, $player_id, $hand_id) {
         WHERE player_id = ?
     ")->execute([$player_id]);
 
-	// Проверяем, выиграл ли игрок раздачу (нет других активных игроков)
+	// Проверяем, выиграл ли игрок раздачу
 	$stmt = $pdo->prepare("
         SELECT COUNT(*) = 0 AS is_winner
         FROM actions
@@ -122,7 +154,6 @@ function updatePlayerStats($pdo, $player_id, $hand_id) {
 	$stmt->execute([$hand_id, $player_id]);
 	$is_winner = $stmt->fetchColumn();
 
-	// Если игрок выиграл, обновляем WSD
 	if ($is_winner) {
 		$pdo->prepare("
             UPDATE players 

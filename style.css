@@ -176,6 +176,12 @@ label {
     padding-left: 30px;
 }
 
+.board_showdown {
+    display: flex;
+    flex-direction: row;
+    padding-left: 40px;
+}
+
 .my_cards .board_slot {
     width: 35px;
     height: 40px;
@@ -185,6 +191,13 @@ label {
 
 .board_street .board_slot {
     width: 35px;
+    height: 40px;
+    margin-left: 2px;
+    font-size: 14px;
+}
+
+.board_showdown .board_slot {
+    width: 30px;
     height: 40px;
     margin-left: 2px;
     font-size: 14px;

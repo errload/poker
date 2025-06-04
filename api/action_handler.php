@@ -100,7 +100,7 @@ function ensurePlayerExists(PDO $pdo, string $playerId): void {
 	$stmt = $pdo->prepare("SELECT 1 FROM players WHERE player_id = ?");
 	$stmt->execute([$playerId]);
 	if (!$stmt->fetch()) {
-		$nickname = "Player" . substr($playerId, 0, 1);
+		$nickname = "Player" . substr($playerId, 0, 6);
 		$stmt = $pdo->prepare("INSERT INTO players (player_id, nickname) VALUES (?, ?)");
 		$stmt->execute([$playerId, $nickname]);
 	}

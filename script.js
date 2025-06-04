@@ -5,6 +5,7 @@ let bid_counter = 1 // начало раздачи, по умолчанию ст
 let position_id = 999999
 let position_ids = []
 let start_position = 2 // начало раздачи, UTG
+let cards_showdown = []
 
 // получение рандомного ID
 function generateRandomId(length = 6) {
@@ -145,120 +146,189 @@ document
 			const classCard = (this.className).split(' ')[1]
 			let cards = null
 
-			const my_slot1 = document.querySelectorAll('.my_cards .board_slot')[0]
-			const my_slot2 = document.querySelectorAll('.my_cards .board_slot')[1]
-			const board_slot1 = document.querySelectorAll('.board_street .board_slot')[0]
-			const board_slot2 = document.querySelectorAll('.board_street .board_slot')[1]
-			const board_slot3 = document.querySelectorAll('.board_street .board_slot')[2]
-			const board_slot4 = document.querySelectorAll('.board_street .board_slot')[3]
-			const board_slot5 = document.querySelectorAll('.board_street .board_slot')[4]
+			if (getBoardStatus() === 'showdown') {
+				const showdown_slot1 = document.querySelectorAll('.board_showdown .board_slot')[0]
+				const showdown_slot2 = document.querySelectorAll('.board_showdown .board_slot')[1]
+				const showdown_slot3 = document.querySelectorAll('.board_showdown .board_slot')[2]
+				const showdown_slot4 = document.querySelectorAll('.board_showdown .board_slot')[3]
+				const showdown_slot5 = document.querySelectorAll('.board_showdown .board_slot')[4]
+				const showdown_slot6 = document.querySelectorAll('.board_showdown .board_slot')[5]
+				const showdown_slot7 = document.querySelectorAll('.board_showdown .board_slot')[6]
+				const showdown_slot8 = document.querySelectorAll('.board_showdown .board_slot')[7]
 
-			// const line_result = document.querySelector('.line_result')
-			// const line_bids = document.querySelector('.line_bids')
+				if (!showdown_slot1.textContent) {
+					showdown_slot1.textContent = this.textContent
+					showdown_slot1.classList.add(classCard)
+					showdown_slot1.dataset.card = this.dataset.slot
+					return false
+				}
 
-			if (!my_slot1.textContent) {
-				my_slot1.textContent = this.textContent
-				my_slot1.classList.remove('check')
-				my_slot1.classList.add(classCard)
-				my_slot1.dataset.card = this.dataset.slot
-				return false
-			}
+				if (!showdown_slot2.textContent) {
+					showdown_slot2.textContent = this.textContent
+					showdown_slot2.classList.add(classCard)
+					showdown_slot2.dataset.card = this.dataset.slot
 
-			if (!my_slot2.textContent) {
-				my_slot2.textContent = this.textContent
-				my_slot2.classList.remove('check')
-				my_slot2.classList.add(classCard)
-				my_slot2.dataset.card = this.dataset.slot
+					cards = showdown_slot1.textContent + showdown_slot1.dataset.card
+					cards += showdown_slot2.textContent + showdown_slot2.dataset.card
+					cards_showdown.push(cards)
+					return false
+				}
 
-				cards = my_slot1.textContent + my_slot1.dataset.card
-				cards += my_slot2.textContent + my_slot2.dataset.card
+				if (!showdown_slot3.textContent) {
+					showdown_slot3.textContent = this.textContent
+					showdown_slot3.classList.add(classCard)
+					showdown_slot3.dataset.card = this.dataset.slot
+					return false
+				}
 
-				await sendAjax('/4bet/api/update_hero_cards.php', {
-					hand_id: hand_id,
-					hero_cards: cards
-				})
+				if (!showdown_slot4.textContent) {
+					showdown_slot4.textContent = this.textContent
+					showdown_slot4.classList.add(classCard)
+					showdown_slot4.dataset.card = this.dataset.slot
 
-				return false
-			}
+					cards = showdown_slot3.textContent + showdown_slot3.dataset.card
+					cards += showdown_slot4.textContent + showdown_slot4.dataset.card
+					cards_showdown.push(cards)
+					return false
+				}
 
-			if (!board_slot1.textContent) {
-				board_slot1.textContent = this.textContent
-				board_slot1.classList.add(classCard)
-				board_slot1.dataset.card = this.dataset.slot
-				return false
-			}
+				if (!showdown_slot5.textContent) {
+					showdown_slot5.textContent = this.textContent
+					showdown_slot5.classList.add(classCard)
+					showdown_slot5.dataset.card = this.dataset.slot
+					return false
+				}
 
-			if (!board_slot2.textContent) {
-				board_slot2.textContent = this.textContent
-				board_slot2.classList.add(classCard)
-				board_slot2.dataset.card = this.dataset.slot
-				return false
-			}
+				if (!showdown_slot6.textContent) {
+					showdown_slot6.textContent = this.textContent
+					showdown_slot6.classList.add(classCard)
+					showdown_slot6.dataset.card = this.dataset.slot
 
-			if (!board_slot3.textContent) {
-				board_slot3.textContent = this.textContent
-				board_slot3.classList.add(classCard)
-				board_slot3.dataset.card = this.dataset.slot
+					cards = showdown_slot5.textContent + showdown_slot5.dataset.card
+					cards += showdown_slot6.textContent + showdown_slot6.dataset.card
+					cards_showdown.push(cards)
+					return false
+				}
 
-				cards = board_slot1.textContent + board_slot1.dataset.card
-				cards += board_slot2.textContent + board_slot2.dataset.card
-				cards += board_slot3.textContent + board_slot3.dataset.card
+				if (!showdown_slot7.textContent) {
+					showdown_slot7.textContent = this.textContent
+					showdown_slot7.classList.add(classCard)
+					showdown_slot7.dataset.card = this.dataset.slot
+					return false
+				}
 
-				await sendAjax('/4bet/api/update_board.php', {
-					hand_id: hand_id,
-					board: cards
-				});
+				if (!showdown_slot8.textContent) {
+					showdown_slot8.textContent = this.textContent
+					showdown_slot8.classList.add(classCard)
+					showdown_slot8.dataset.card = this.dataset.slot
 
-				// setStreetBidCounter()
-				// line_result.textContent = ''
-				// line_bids.textContent = ''
-				document.querySelectorAll('[name="board_stady"]')[1].click()
-				return false
-			}
+					cards = showdown_slot7.textContent + showdown_slot7.dataset.card
+					cards += showdown_slot8.textContent + showdown_slot8.dataset.card
+					cards_showdown.push(cards)
+					return false
+				}
+			} else {
+				const my_slot1 = document.querySelectorAll('.my_cards .board_slot')[0]
+				const my_slot2 = document.querySelectorAll('.my_cards .board_slot')[1]
+				const board_slot1 = document.querySelectorAll('.board_street .board_slot')[0]
+				const board_slot2 = document.querySelectorAll('.board_street .board_slot')[1]
+				const board_slot3 = document.querySelectorAll('.board_street .board_slot')[2]
+				const board_slot4 = document.querySelectorAll('.board_street .board_slot')[3]
+				const board_slot5 = document.querySelectorAll('.board_street .board_slot')[4]
 
-			if (!board_slot4.textContent) {
-				board_slot4.textContent = this.textContent
-				board_slot4.classList.add(classCard)
-				board_slot4.dataset.card = this.dataset.slot
+				if (!my_slot1.textContent) {
+					my_slot1.textContent = this.textContent
+					my_slot1.classList.add(classCard)
+					my_slot1.dataset.card = this.dataset.slot
+					return false
+				}
 
-				cards = board_slot1.textContent + board_slot1.dataset.card
-				cards += board_slot2.textContent + board_slot2.dataset.card
-				cards += board_slot3.textContent + board_slot3.dataset.card
-				cards += ' ' + board_slot4.textContent + board_slot4.dataset.card
+				if (!my_slot2.textContent) {
+					my_slot2.textContent = this.textContent
+					my_slot2.classList.add(classCard)
+					my_slot2.dataset.card = this.dataset.slot
 
-				await sendAjax('/4bet/api/update_board.php', {
-					hand_id: hand_id,
-					board: cards
-				});
+					cards = my_slot1.textContent + my_slot1.dataset.card
+					cards += my_slot2.textContent + my_slot2.dataset.card
 
-				// setStreetBidCounter()
-				// line_result.textContent = ''
-				// line_bids.textContent = ''
-				document.querySelectorAll('[name="board_stady"]')[2].click()
-				return false
-			}
+					await sendAjax('/4bet/api/update_hero_cards.php', {
+						hand_id: hand_id,
+						hero_cards: cards
+					})
 
-			if (!board_slot5.textContent) {
-				board_slot5.textContent = this.textContent
-				board_slot5.classList.add(classCard)
-				board_slot5.dataset.card = this.dataset.slot
+					return false
+				}
 
-				cards = board_slot1.textContent + board_slot1.dataset.card
-				cards += board_slot2.textContent + board_slot2.dataset.card
-				cards += board_slot3.textContent + board_slot3.dataset.card
-				cards += ' ' + board_slot4.textContent + board_slot4.dataset.card
-				cards += ' ' + board_slot5.textContent + board_slot5.dataset.card
+				if (!board_slot1.textContent) {
+					board_slot1.textContent = this.textContent
+					board_slot1.classList.add(classCard)
+					board_slot1.dataset.card = this.dataset.slot
+					return false
+				}
 
-				await sendAjax('/4bet/api/update_board.php', {
-					hand_id: hand_id,
-					board: cards
-				});
+				if (!board_slot2.textContent) {
+					board_slot2.textContent = this.textContent
+					board_slot2.classList.add(classCard)
+					board_slot2.dataset.card = this.dataset.slot
+					return false
+				}
 
-				// setStreetBidCounter()
-				// line_result.textContent = ''
-				// line_bids.textContent = ''
-				document.querySelectorAll('[name="board_stady"]')[3].click()
-				return false
+				if (!board_slot3.textContent) {
+					board_slot3.textContent = this.textContent
+					board_slot3.classList.add(classCard)
+					board_slot3.dataset.card = this.dataset.slot
+
+					cards = board_slot1.textContent + board_slot1.dataset.card
+					cards += board_slot2.textContent + board_slot2.dataset.card
+					cards += board_slot3.textContent + board_slot3.dataset.card
+
+					await sendAjax('/4bet/api/update_board.php', {
+						hand_id: hand_id,
+						board: cards
+					});
+
+					document.querySelectorAll('[name="board_stady"]')[1].click()
+					return false
+				}
+
+				if (!board_slot4.textContent) {
+					board_slot4.textContent = this.textContent
+					board_slot4.classList.add(classCard)
+					board_slot4.dataset.card = this.dataset.slot
+
+					cards = board_slot1.textContent + board_slot1.dataset.card
+					cards += board_slot2.textContent + board_slot2.dataset.card
+					cards += board_slot3.textContent + board_slot3.dataset.card
+					cards += ' ' + board_slot4.textContent + board_slot4.dataset.card
+
+					await sendAjax('/4bet/api/update_board.php', {
+						hand_id: hand_id,
+						board: cards
+					});
+
+					document.querySelectorAll('[name="board_stady"]')[2].click()
+					return false
+				}
+
+				if (!board_slot5.textContent) {
+					board_slot5.textContent = this.textContent
+					board_slot5.classList.add(classCard)
+					board_slot5.dataset.card = this.dataset.slot
+
+					cards = board_slot1.textContent + board_slot1.dataset.card
+					cards += board_slot2.textContent + board_slot2.dataset.card
+					cards += board_slot3.textContent + board_slot3.dataset.card
+					cards += ' ' + board_slot4.textContent + board_slot4.dataset.card
+					cards += ' ' + board_slot5.textContent + board_slot5.dataset.card
+
+					await sendAjax('/4bet/api/update_board.php', {
+						hand_id: hand_id,
+						board: cards
+					});
+
+					document.querySelectorAll('[name="board_stady"]')[3].click()
+					return false
+				}
 			}
 		})
 	})
@@ -268,6 +338,28 @@ document
 	.querySelector('.reset')
 	.addEventListener('click', async () => {
 		if (!document.querySelectorAll('[name="position"]:checked').length) return false
+
+		let players = []
+		document
+			.querySelectorAll('[name="position"]')
+			.forEach(elem => {
+				if (elem.dataset.action === 'inactive') return
+				if (!cards_showdown.length) return
+				players.push({
+					player_id: elem.dataset.id,
+					cards: cards_showdown.shift()
+				})
+			})
+
+		console.log(players)
+
+		await sendAjax('/4bet/api/showdown_handler.php', {
+			hand_id: hand_id,
+			players: players
+		})
+
+		return false
+
 
 		let current_index = null
 		let next_index = null
@@ -396,7 +488,6 @@ document
 			document.querySelector('.line_result').textContent = ''
 			document.querySelector('.line_bids').textContent = ''
 			setStreetBidCounter()
-			console.log(start_position)
 		})
 	})
 
@@ -412,7 +503,7 @@ const getCurrentPosition = () => {
 		if (start_index !== -1) {
 			for (let i = 0; i < elements.length; i++) {
 				const current_index = (start_index + i) % elements.length
-				if (elements[current_index].dataset.action === 'active') {
+				if (elements[current_index].dataset.action !== 'inactive') {
 					found_element = elements[current_index]
 					start_position = current_index
 					break
@@ -474,6 +565,7 @@ document
 		if (start_position > 7) start_position = 0
 	})
 
+// check
 document
 	.querySelector('.check')
 	.addEventListener('click', async function () {
@@ -492,19 +584,17 @@ document
 			'position': current_element.value
 		})
 
-		addBidDescription(`${current_element.value}:fold`)
+		addBidDescription(`${current_element.value}:check`)
 		start_position++
 		if (start_position > 7) start_position = 0
 	})
 
+// raise
 document
 	.querySelector('.raise')
 	.addEventListener('click', async function () {
 		if (getBoardStatus() === 'showdown') return false
 		if (!document.querySelectorAll('[name="position"]:checked').length) return false
-
-		// const player = this.closest('.player')
-		// const position = player.querySelector('.player_position').textContent
 
 		const overlay = document.createElement('div')
 		overlay.classList.add('popup-overlay')
@@ -575,14 +665,12 @@ document
 			})
 	})
 
+// all-in
 document
 	.querySelector('.all-in')
 	.addEventListener('click', async function () {
 		if (getBoardStatus() === 'showdown') return false
 		if (!document.querySelectorAll('[name="position"]:checked').length) return false
-
-		// const player = this.closest('.player')
-		// const position = player.querySelector('.player_position').textContent
 
 		const overlay = document.createElement('div')
 		overlay.classList.add('popup-overlay')
@@ -635,7 +723,7 @@ document
 
 					const current_element = getCurrentPosition()
 					if (!current_element) return false
-					current_element.dataset.action = 'inactive'
+					current_element.dataset.action = 'all-in'
 					current_element.nextSibling.style.color = '#e7e7e7' // label
 
 					await sendAjax('/4bet/api/action_handler.php', {
@@ -654,6 +742,25 @@ document
 				})
 			})
 	})
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
