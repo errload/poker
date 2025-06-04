@@ -44,15 +44,17 @@ try {
 	$handData = $handStmt->fetch();
 	if (!$handData) throw new Exception("Раздача не найдена");
 
+	// Исправленный запрос для totalBet - убрал LIMIT из подзапроса
 	$stackStmt = $pdo->prepare("
-		SELECT SUM(amount) 
-		FROM actions 
-		WHERE hand_id = ? AND player_id IN (
-			SELECT player_id FROM actions 
-			WHERE hand_id = ? AND position = ?
-			LIMIT 1
-		)
-	");
+        SELECT SUM(amount) 
+        FROM actions 
+        WHERE hand_id = ? AND player_id = (
+            SELECT player_id FROM actions 
+            WHERE hand_id = ? AND position = ?
+            ORDER BY sequence_num
+            LIMIT 1
+        )
+    ");
 	$stackStmt->execute([$input['hand_id'], $input['hand_id'], $input['hero_position']]);
 	$totalBet = $stackStmt->fetchColumn() ?? 0;
 	$currentStack = $handData['hero_stack'] - $totalBet;
@@ -80,7 +82,7 @@ try {
 	$recentHandsStmt->execute();
 	$recentHandIds = $recentHandsStmt->fetchAll(PDO::FETCH_COLUMN, 0);
 
-	// Build condition for recent players
+	// Build condition for recent players - переписал без LIMIT в подзапросе
 	$recentPlayersCondition = "1=1";
 	$params = [
 		$input['hero_position'],
@@ -94,11 +96,11 @@ try {
 	];
 
 	if (!empty($recentHandIds)) {
-		$placeholders = implode(',', array_fill(0, count($recentHandIds), '?'));
-		$recentPlayersCondition = "p.player_id IN (
-            SELECT player_id FROM actions 
-            WHERE hand_id IN ($placeholders)
-            GROUP BY player_id
+		// Вместо подзапроса с IN используем JOIN
+		$recentPlayersCondition = "EXISTS (
+            SELECT 1 FROM actions a_rec 
+            WHERE a_rec.player_id = p.player_id
+            AND a_rec.hand_id IN (".implode(',', array_fill(0, count($recentHandIds), '?')).")
         )";
 		$params = array_merge($params, $recentHandIds);
 	}
