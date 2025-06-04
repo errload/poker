@@ -92,6 +92,24 @@ document
 	.forEach(elem => {
 		elem.addEventListener('change', async function () {
 			let current_position = null
+
+			let players = []
+			document
+				.querySelectorAll('[name="position"]')
+				.forEach(elem => {
+					if (elem.dataset.action === 'inactive') return
+					if (!cards_showdown.length) return
+					players.push({
+						player_id: elem.dataset.id,
+						cards: cards_showdown.shift()
+					})
+				})
+
+			await sendAjax('/4bet/api/showdown_handler.php', {
+				hand_id: hand_id,
+				players: players
+			})
+
 			actions = []
 			actions.splice(actions.length, 0, ...positions)
 
