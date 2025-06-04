@@ -51,7 +51,25 @@ try {
 	$errors = [];
 
 	try {
-		// Обрабатываем каждого игрока
+		// Сначала собираем информацию о всех игроках в раздаче
+		$stmt = $pdo->prepare("
+            SELECT player_id, action_type 
+            FROM actions 
+            WHERE hand_id = ? 
+            ORDER BY sequence_num DESC
+        ");
+		$stmt->execute([$input['hand_id']]);
+		$allActions = $stmt->fetchAll();
+
+		// Определяем, кто сбросился
+		$foldedPlayers = [];
+		foreach ($allActions as $action) {
+			if ($action['action_type'] == 'fold') {
+				$foldedPlayers[$action['player_id']] = true;
+			}
+		}
+
+		// Обрабатываем каждого игрока из входных данных
 		foreach ($input['players'] as $player) {
 			if (!isset($player['player_id']) || !isset($player['cards'])) {
 				$errors[] = "Each player must have player_id and cards";
@@ -87,8 +105,9 @@ try {
 				':cards' => $player['cards']
 			]);
 
-			// Обновляем статистику игрока
-			updatePlayerStats($pdo, $playerId, $input['hand_id']);
+			// Обновляем время последней активности
+			$pdo->prepare("UPDATE players SET last_seen = NOW() WHERE player_id = ?")
+				->execute([$playerId]);
 		}
 
 		// Если есть ошибки, откатываем транзакцию
@@ -128,61 +147,4 @@ try {
 }
 
 echo json_encode($response);
-
-function updatePlayerStats($pdo, $player_id, $hand_id) {
-	// Увеличиваем счетчик шоудаунов и обновляем WTSD
-	$pdo->prepare("
-        UPDATE players 
-        SET 
-            showdowns = showdowns + 1,
-            wtsd = CASE 
-                WHEN hands_played > 0 THEN (showdowns + 1) * 100 / hands_played 
-                ELSE 0 
-            END,
-            last_seen = NOW()
-        WHERE player_id = ?
-    ")->execute([$player_id]);
-
-	// Проверяем, выиграл ли игрок раздачу
-	$stmt = $pdo->prepare("
-        SELECT COUNT(*) = 0 AS is_winner
-        FROM actions
-        WHERE hand_id = ?
-        AND player_id != ?
-        AND action_type != 'fold'
-    ");
-	$stmt->execute([$hand_id, $player_id]);
-	$is_winner = $stmt->fetchColumn();
-
-	if ($is_winner) {
-		$pdo->prepare("
-            UPDATE players 
-            SET wsd = CASE 
-                WHEN showdowns > 0 THEN (
-                    SELECT COUNT(*) 
-                    FROM (
-                        SELECT DISTINCT h.hand_id
-                        FROM hands h
-                        JOIN showdown s ON h.hand_id = s.hand_id
-                        WHERE s.player_id = ?
-                        AND h.hand_id IN (
-                            SELECT hand_id 
-                            FROM showdown 
-                            WHERE player_id = ?
-                        )
-                        AND NOT EXISTS (
-                            SELECT 1 
-                            FROM actions a 
-                            WHERE a.hand_id = h.hand_id 
-                            AND a.player_id != ?
-                            AND a.action_type != 'fold'
-                        )
-                    ) AS won_hands
-                ) * 100 / GREATEST(showdowns, 1)
-                ELSE 0
-            END
-            WHERE player_id = ?
-        ")->execute([$player_id, $player_id, $player_id, $player_id]);
-	}
-}
 ?>
