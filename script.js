@@ -92,7 +92,8 @@ document
 	})
 
 const showCurrentPlayer = () => {
-	console.log(start_position)
+	getCurrentPosition()
+
 	document
 		.querySelectorAll('.position_wrapper')
 		.forEach(elem => {
@@ -624,6 +625,7 @@ document
 		addBidDescription(`${current_element.value}:check`)
 		start_position++
 		if (start_position > 7) start_position = 0
+		showCurrentPlayer()
 	})
 
 // raise
@@ -697,6 +699,7 @@ document
 					addBidDescription(`${current_element.value}:raise ${bid_counter} bb`)
 					start_position++
 					if (start_position > 7) start_position = 0
+					showCurrentPlayer()
 					document.body.removeChild(overlay)
 				})
 			})
@@ -775,6 +778,7 @@ document
 					addBidDescription(`${current_element.value}:all-in ${bid_counter} bb`)
 					start_position++
 					if (start_position > 7) start_position = 0
+					showCurrentPlayer()
 					document.body.removeChild(overlay)
 				})
 			})
