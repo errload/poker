@@ -19,7 +19,7 @@ try {
                 COLLATE ".DB_CHARSET."_unicode_ci");
 	$pdo->exec("USE `".DB_NAME."`");
 
-	// Структура таблиц
+	// Улучшенная структура таблиц
 	$tables = [
 		"players" => "
             CREATE TABLE IF NOT EXISTS `players` (
@@ -35,8 +35,14 @@ try {
                 `hands_played` INT UNSIGNED DEFAULT 0,
                 `showdowns` INT UNSIGNED DEFAULT 0,
                 `preflop_raises` INT UNSIGNED DEFAULT 0,
+                `postflop_raises` INT UNSIGNED DEFAULT 0,
+                `check_raises` INT UNSIGNED DEFAULT 0,
+                `cbet` DECIMAL(5,2) DEFAULT 0.00,
+                `fold_to_cbet` DECIMAL(5,2) DEFAULT 0.00,
                 `aggressive_actions` INT UNSIGNED DEFAULT 0,
                 `passive_actions` INT UNSIGNED DEFAULT 0,
+                `steal_attempt` DECIMAL(5,2) DEFAULT 0.00,
+                `steal_success` DECIMAL(5,2) DEFAULT 0.00,
                 `last_seen` DATETIME DEFAULT CURRENT_TIMESTAMP,
                 `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
                 INDEX `idx_player_nickname` (`nickname`),
@@ -70,12 +76,16 @@ try {
                 `is_voluntary` BOOLEAN DEFAULT TRUE,
                 `is_aggressive` BOOLEAN DEFAULT FALSE,
                 `is_first_action` BOOLEAN DEFAULT FALSE,
+                `is_cbet` BOOLEAN DEFAULT FALSE,
+                `is_steal` BOOLEAN DEFAULT FALSE,
                 `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (`hand_id`) REFERENCES `hands`(`hand_id`) ON DELETE CASCADE,
                 FOREIGN KEY (`player_id`) REFERENCES `players`(`player_id`) ON DELETE CASCADE,
                 UNIQUE KEY `uk_action_sequence` (`hand_id`, `sequence_num`),
                 INDEX `idx_action_composite` (`hand_id`, `player_id`, `street`),
-                INDEX `idx_action_type` (`action_type`)
+                INDEX `idx_action_type` (`action_type`),
+                INDEX `idx_action_cbet` (`is_cbet`),
+                INDEX `idx_action_steal` (`is_steal`)
             ) ENGINE=InnoDB DEFAULT CHARSET=".DB_CHARSET,
 
 		"showdown" => "
@@ -84,6 +94,7 @@ try {
                 `hand_id` INT NOT NULL,
                 `player_id` VARCHAR(36) NOT NULL,
                 `cards` VARCHAR(10) NOT NULL,
+                `won_amount` DECIMAL(15,2) DEFAULT 0.00,
                 `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (`hand_id`) REFERENCES `hands`(`hand_id`) ON DELETE CASCADE,
                 FOREIGN KEY (`player_id`) REFERENCES `players`(`player_id`) ON DELETE CASCADE,
@@ -98,199 +109,210 @@ try {
 		echo "Таблица '$name' успешно создана\n";
 	}
 
-	// Триггер для обновления статистики
+	// Улучшенный триггер для обновления статистики
 	$trigger_sql = "
     CREATE TRIGGER after_action_insert
-        AFTER INSERT ON actions
-        FOR EACH ROW
-        BEGIN
-            DECLARE total_hands INT;
-            DECLARE total_showdowns INT;
-            DECLARE prev_aggressive_count INT DEFAULT 0;
-            DECLARE player_folded INT DEFAULT 0;
-            DECLARE remaining_players INT DEFAULT 0;
-            DECLARE players_in_hand INT DEFAULT 0;
-            DECLARE is_new_hand BOOLEAN DEFAULT FALSE;
-            DECLARE showdown_players INT DEFAULT 0;
-            DECLARE non_folded_players INT DEFAULT 0;
-            
-            -- Проверяем, первое ли это действие в раздаче для игрока
-            SELECT COUNT(*) = 0 INTO is_new_hand
-            FROM actions
-            WHERE hand_id = NEW.hand_id AND player_id = NEW.player_id
-            AND sequence_num < NEW.sequence_num;
-            
-            -- Обновляем время последней активности
-            UPDATE players SET last_seen = NOW() WHERE player_id = NEW.player_id;
-            
-            -- Получаем общее количество рук игрока
-            SELECT hands_played, showdowns INTO total_hands, total_showdowns
-            FROM players WHERE player_id = NEW.player_id;
-            
-            -- VPIP (Voluntarily Put $ In Pot)
-            IF NEW.street = 'preflop' AND NEW.is_voluntary 
-               AND NEW.action_type IN ('call', 'bet', 'raise', 'all-in') 
-               AND is_new_hand THEN
-                UPDATE players 
-                SET hands_played = hands_played + 1,
-                    vpip = (
-                        SELECT COUNT(DISTINCT h.hand_id) 
-                        FROM hands h
-                        JOIN actions a ON h.hand_id = a.hand_id
-                        WHERE a.player_id = NEW.player_id
-                        AND a.street = 'preflop'
-                        AND a.is_voluntary = 1
-                        AND a.action_type IN ('call', 'bet', 'raise', 'all-in')
-                    ) * 100 / GREATEST(hands_played + 1, 1)
-                WHERE player_id = NEW.player_id;
-            END IF;
-            
-            -- PFR (Preflop Raise)
-            IF NEW.street = 'preflop' AND NEW.is_aggressive 
-               AND NEW.action_type IN ('raise', 'all-in') 
-               AND is_new_hand THEN
-                UPDATE players 
-                SET pfr = (
-                        SELECT COUNT(DISTINCT h.hand_id)
-                        FROM hands h
-                        JOIN actions a ON h.hand_id = a.hand_id
-                        WHERE a.player_id = NEW.player_id
-                        AND a.street = 'preflop'
-                        AND a.is_aggressive = 1
-                        AND a.action_type IN ('raise', 'all-in')
-                    ) * 100 / GREATEST(hands_played + 1, 1),
-                    preflop_raises = preflop_raises + 1
-                WHERE player_id = NEW.player_id;
-            END IF;
-            
-            -- Three Bet
-            IF NEW.street = 'preflop' AND NEW.action_type IN ('raise', 'all-in') THEN
-                SELECT COUNT(*) INTO prev_aggressive_count
-                FROM actions
-                WHERE hand_id = NEW.hand_id
-                AND street = 'preflop'
-                AND action_type IN ('bet', 'raise', 'all-in')
-                AND sequence_num < NEW.sequence_num;
-                
-                IF prev_aggressive_count >= 1 THEN
-                    UPDATE players 
-                    SET three_bet = (
-                            SELECT COUNT(DISTINCT a.hand_id)
-                            FROM actions a
-                            JOIN actions prev ON a.hand_id = prev.hand_id
-                            WHERE a.player_id = NEW.player_id
-                            AND a.street = 'preflop'
-                            AND a.action_type IN ('raise', 'all-in')
-                            AND prev.street = 'preflop'
-                            AND prev.action_type IN ('bet', 'raise', 'all-in')
-                            AND prev.sequence_num < a.sequence_num
-                        ) * 100 / GREATEST(hands_played + 1, 1)
-                    WHERE player_id = NEW.player_id;
-                END IF;
-            END IF;
-            
-            -- WTSD (Went to Showdown) и WSD (Won at Showdown)
-            IF NEW.street = 'river' THEN
-                -- Проверяем, сбросился ли игрок в этой раздаче
-                SELECT COUNT(*) INTO player_folded
-                FROM actions
-                WHERE hand_id = NEW.hand_id
-                AND player_id = NEW.player_id
-                AND action_type = 'fold';
-                
-                -- Если игрок не сбросился
-                IF player_folded = 0 THEN
-                    -- Считаем сколько игроков не сбросились
-                    SELECT COUNT(DISTINCT player_id) INTO remaining_players
-                    FROM actions
-                    WHERE hand_id = NEW.hand_id
-                    AND player_id NOT IN (
-                        SELECT player_id FROM actions 
-                        WHERE hand_id = NEW.hand_id AND action_type = 'fold'
-                    );
-                    
-                    -- Обновляем статистику
-                    UPDATE players 
-                    SET 
-                        -- Увеличиваем счетчик шоудаунов
-                        showdowns = showdowns + 1,
-                        -- WTSD = (Количество шоудаунов) / (Общее количество рук) * 100
-                        wtsd = (showdowns + 1) * 100 / GREATEST(hands_played, 1)
-                    WHERE player_id = NEW.player_id;
-                    
-                    -- Считаем сколько игроков дошли до showdown (имеют карты в таблице showdown)
-                    SELECT COUNT(*) INTO showdown_players
-                    FROM showdown
-                    WHERE hand_id = NEW.hand_id;
-                    
-                    -- Считаем сколько игроков не сбросились
-                    SELECT COUNT(DISTINCT player_id) INTO non_folded_players
-                    FROM actions
-                    WHERE hand_id = NEW.hand_id
-                    AND player_id NOT IN (
-                        SELECT player_id FROM actions 
-                        WHERE hand_id = NEW.hand_id AND action_type = 'fold'
-                    );
-                    
-                    -- Если все не сбросившиеся игроки имеют карты в showdown (раздача завершена)
-                    IF non_folded_players = showdown_players AND showdown_players > 0 THEN
-                        -- Обновляем WSD для игрока, если он единственный не сбросившийся
-                        IF non_folded_players = 1 THEN
-                            UPDATE players 
-                            SET wsd = (
-                                SELECT COUNT(*) 
-                                FROM (
-                                    SELECT DISTINCT h.hand_id
-                                    FROM hands h
-                                    JOIN actions a ON h.hand_id = a.hand_id
-                                    WHERE a.player_id = NEW.player_id
-                                    AND a.street = 'river'
-                                    AND NOT EXISTS (
-                                        SELECT 1 FROM actions f
-                                        WHERE f.hand_id = h.hand_id
-                                        AND f.player_id = NEW.player_id
-                                        AND f.action_type = 'fold'
-                                    )
-                                    AND (
-                                        SELECT COUNT(DISTINCT p.player_id)
-                                        FROM actions p
-                                        WHERE p.hand_id = h.hand_id
-                                        AND p.player_id != NEW.player_id
-                                        AND NOT EXISTS (
-                                            SELECT 1 FROM actions pf
-                                            WHERE pf.hand_id = h.hand_id
-                                            AND pf.player_id = p.player_id
-                                            AND pf.action_type = 'fold'
-                                        )
-                                    ) = 0
-                                ) AS won_showdowns
-                            ) * 100 / GREATEST(showdowns + 1, 1)
-                            WHERE player_id = NEW.player_id;
-                        END IF;
-                    END IF;
-                END IF;
-            END IF;
-            
-            -- Обновляем агрессивные/пассивные действия
-            IF NEW.is_aggressive THEN
-                UPDATE players 
-                SET aggressive_actions = aggressive_actions + 1
-                WHERE player_id = NEW.player_id;
-            ELSEIF NEW.action_type IN ('call', 'check') THEN
-                UPDATE players 
-                SET passive_actions = passive_actions + 1
-                WHERE player_id = NEW.player_id;
-            END IF;
-            
-            -- Обновляем AF и AFq
-            UPDATE players 
-            SET 
-                af = IF(passive_actions > 0, aggressive_actions / passive_actions, 
-                       IF(aggressive_actions > 0, 99, 0)),
-                afq = IF((aggressive_actions + passive_actions) > 0, 
-                        aggressive_actions * 100 / (aggressive_actions + passive_actions), 0)
-            WHERE player_id = NEW.player_id;
-        END;";
+	AFTER INSERT ON actions
+	FOR EACH ROW
+	BEGIN
+		DECLARE total_hands INT DEFAULT 0;
+		DECLARE total_showdowns INT DEFAULT 0;
+		DECLARE total_aggressive INT DEFAULT 0;
+		DECLARE total_passive INT DEFAULT 0;
+		DECLARE total_preflop_raises INT DEFAULT 0;
+		DECLARE total_postflop_raises INT DEFAULT 0;
+		DECLARE total_check_raises INT DEFAULT 0;
+		DECLARE total_three_bets INT DEFAULT 0;
+		DECLARE total_wtsd INT DEFAULT 0;
+		DECLARE total_wsd INT DEFAULT 0;
+		DECLARE total_cbet_attempts INT DEFAULT 0;
+		DECLARE total_cbet_success INT DEFAULT 0;
+		DECLARE total_fold_to_cbet INT DEFAULT 0;
+		DECLARE total_steal_attempts INT DEFAULT 0;
+		DECLARE total_steal_success INT DEFAULT 0;
+		DECLARE vpip_hands INT DEFAULT 0;
+		DECLARE vpip_eligible_hands INT DEFAULT 0;
+		
+		-- Обновляем время последней активности
+		UPDATE players SET last_seen = NOW() WHERE player_id = NEW.player_id;
+		
+		-- Считаем чек-рейзы (если текущее действие - рейз после чека)
+		IF NEW.action_type = 'raise' AND EXISTS (
+			SELECT 1 FROM actions 
+			WHERE hand_id = NEW.hand_id 
+			AND player_id = NEW.player_id 
+			AND street = NEW.street 
+			AND action_type = 'check'
+			AND sequence_num < NEW.sequence_num
+		) THEN
+			UPDATE players SET check_raises = IFNULL(check_raises, 0) + 1 WHERE player_id = NEW.player_id;
+		END IF;
+		
+		-- Получаем общее количество рук игрока
+		SELECT COUNT(DISTINCT hand_id) INTO total_hands
+		FROM actions
+		WHERE player_id = NEW.player_id;
+		
+		-- Рассчитываем статистику только если у игрока есть хотя бы 1 рука
+		IF total_hands > 0 THEN
+			-- VPIP (Voluntarily Put $ In Pot)
+			SELECT COUNT(DISTINCT a.hand_id) INTO vpip_hands
+			FROM actions a
+			WHERE a.player_id = NEW.player_id
+			AND a.street = 'preflop'
+			AND a.action_type IN ('call', 'bet', 'raise', 'all-in');
+			
+			-- Общее количество рук, где игрок мог сделать VPIP
+			SELECT COUNT(DISTINCT a.hand_id) INTO vpip_eligible_hands
+			FROM actions a
+			WHERE a.player_id = NEW.player_id
+			AND a.street = 'preflop';
+			
+			-- PFR (Preflop Raise)
+			SELECT COUNT(DISTINCT a.hand_id) INTO total_preflop_raises
+			FROM actions a
+			WHERE a.player_id = NEW.player_id
+			AND a.street = 'preflop'
+			AND a.action_type IN ('raise', 'all-in');
+			
+			-- Three Bet
+			SELECT COUNT(DISTINCT a1.hand_id) INTO total_three_bets
+			FROM actions a1
+			JOIN actions a2 ON a1.hand_id = a2.hand_id
+			WHERE a1.player_id = NEW.player_id
+			AND a1.street = 'preflop'
+			AND a1.action_type IN ('raise', 'all-in')
+			AND a2.street = 'preflop'
+			AND a2.action_type IN ('bet', 'raise', 'all-in')
+			AND a2.sequence_num < a1.sequence_num
+			AND NOT EXISTS (
+				SELECT 1 FROM actions a3
+				WHERE a3.hand_id = a1.hand_id
+				AND a3.street = 'preflop'
+				AND a3.action_type IN ('raise', 'all-in')
+				AND a3.sequence_num BETWEEN a2.sequence_num AND a1.sequence_num
+				AND a3.player_id != NEW.player_id
+			);
+			
+			-- Postflop Raises
+			SELECT COUNT(DISTINCT a.hand_id) INTO total_postflop_raises
+			FROM actions a
+			WHERE a.player_id = NEW.player_id
+			AND a.street IN ('flop', 'turn', 'river')
+			AND a.action_type IN ('raise', 'all-in');
+			
+			-- WTSD (Went to Showdown)
+			SELECT COUNT(DISTINCT h.hand_id) INTO total_wtsd
+			FROM hands h
+			JOIN actions a ON h.hand_id = a.hand_id
+			WHERE a.player_id = NEW.player_id
+			AND a.street = 'river'
+			AND NOT EXISTS (
+				SELECT 1 FROM actions f
+				WHERE f.hand_id = h.hand_id
+				AND f.player_id = NEW.player_id
+				AND f.action_type = 'fold'
+			);
+			
+			-- WSD (Won at Showdown)
+			SELECT COUNT(DISTINCT s.hand_id) INTO total_wsd
+			FROM showdown s
+			JOIN hands h ON s.hand_id = h.hand_id
+			WHERE s.player_id = NEW.player_id
+			AND s.won_amount > 0
+			AND NOT EXISTS (
+				SELECT 1 FROM showdown os
+				WHERE os.hand_id = h.hand_id
+				AND os.player_id != NEW.player_id
+				AND os.won_amount >= s.won_amount
+			);
+			
+			-- CBet stats
+			SELECT COUNT(DISTINCT a.hand_id) INTO total_cbet_attempts
+			FROM actions a
+			WHERE a.player_id = NEW.player_id
+			AND a.is_cbet = 1;
+			
+			SELECT COUNT(DISTINCT a.hand_id) INTO total_cbet_success
+			FROM actions a
+			JOIN actions next ON a.hand_id = next.hand_id
+			WHERE a.player_id = NEW.player_id
+			AND a.is_cbet = 1
+			AND next.street = a.street
+			AND next.sequence_num > a.sequence_num
+			AND next.action_type = 'fold'
+			AND next.player_id != NEW.player_id;
+			
+			-- Fold to CBet
+			SELECT COUNT(DISTINCT a.hand_id) INTO total_fold_to_cbet
+			FROM actions a
+			JOIN actions prev ON a.hand_id = prev.hand_id
+			WHERE a.player_id = NEW.player_id
+			AND a.action_type = 'fold'
+			AND prev.is_cbet = 1
+			AND prev.street = a.street
+			AND prev.sequence_num < a.sequence_num
+			AND prev.player_id != NEW.player_id;
+			
+			-- Steal stats (attempts from CO/BTN/SB)
+			SELECT COUNT(DISTINCT a.hand_id) INTO total_steal_attempts
+			FROM actions a
+			WHERE a.player_id = NEW.player_id
+			AND a.is_steal = 1;
+			
+			SELECT COUNT(DISTINCT a.hand_id) INTO total_steal_success
+			FROM actions a
+			WHERE a.player_id = NEW.player_id
+			AND a.is_steal = 1
+			AND NOT EXISTS (
+				SELECT 1 FROM actions o
+				WHERE o.hand_id = a.hand_id
+				AND o.player_id != NEW.player_id
+				AND o.street = 'preflop'
+				AND o.action_type IN ('raise', 'all-in')
+			);
+			
+			-- AF (Aggression Frequency) и AFq (Aggression Factor)
+			SELECT COUNT(*) INTO total_aggressive
+			FROM actions
+			WHERE player_id = NEW.player_id
+			AND action_type IN ('bet', 'raise', 'all-in');
+			
+			SELECT COUNT(*) INTO total_passive
+			FROM actions
+			WHERE player_id = NEW.player_id
+			AND action_type IN ('call', 'check');
+			
+			-- Общее количество шоудаунов
+			SELECT COUNT(DISTINCT s.hand_id) INTO total_showdowns
+			FROM showdown s
+			WHERE s.player_id = NEW.player_id;
+			
+			-- Обновляем все показатели игрока
+			UPDATE players SET 
+				vpip = IF(vpip_eligible_hands > 0, vpip_hands * 100 / vpip_eligible_hands, NULL),
+				pfr = IF(vpip_eligible_hands > 0, total_preflop_raises * 100 / vpip_eligible_hands, NULL),
+				three_bet = IF(total_preflop_raises > 0, total_three_bets * 100 / total_preflop_raises, NULL),
+				wtsd = IF(total_hands > 0, total_wtsd * 100 / total_hands, NULL),
+				wsd = IF(total_wtsd > 0, total_wsd * 100 / total_wtsd, NULL),
+				af = IF(total_passive > 0, total_aggressive / total_passive, 
+					   IF(total_aggressive > 0, 99, NULL)),
+				afq = IF((total_aggressive + total_passive) > 0, 
+						total_aggressive * 100 / (total_aggressive + total_passive), NULL),
+				hands_played = total_hands,
+				showdowns = total_showdowns,
+				preflop_raises = total_preflop_raises,
+				postflop_raises = total_postflop_raises,
+				cbet = IF(total_cbet_attempts > 0, total_cbet_success * 100 / total_cbet_attempts, NULL),
+				fold_to_cbet = IF(total_cbet_attempts > 0, total_fold_to_cbet * 100 / total_cbet_attempts, NULL),
+				steal_attempt = IF(total_hands > 0, total_steal_attempts * 100 / total_hands, NULL),
+				steal_success = IF(total_steal_attempts > 0, total_steal_success * 100 / total_steal_attempts, NULL),
+				aggressive_actions = total_aggressive,
+				passive_actions = total_passive,
+				last_seen = NOW()
+			WHERE player_id = NEW.player_id;
+		END IF;
+	END;";
 
 	try {
 		$pdo->exec("DROP TRIGGER IF EXISTS after_action_insert");
@@ -298,6 +320,60 @@ try {
 		echo "Триггер 'after_action_insert' успешно создан\n";
 	} catch (PDOException $e) {
 		echo "Ошибка при создании триггера: ".$e->getMessage()."\n";
+	}
+
+	// Создаем представления для аналитики
+	$views = [
+		"player_postflop_stats" => "
+            CREATE OR REPLACE VIEW player_postflop_stats AS
+            SELECT 
+                p.player_id,
+                p.nickname,
+                p.postflop_raises,
+                p.check_raises,
+                p.af,
+                p.afq,
+                p.cbet,
+                p.fold_to_cbet,
+                ROUND(100 * p.postflop_raises / NULLIF(p.hands_played, 0), 2) as postflop_raise_percentage,
+                ROUND(100 * p.check_raises / NULLIF(p.hands_played, 0), 2) as check_raise_percentage
+            FROM players p
+            ORDER BY p.postflop_raises DESC",
+
+		"player_steal_stats" => "
+            CREATE OR REPLACE VIEW player_steal_stats AS
+            SELECT 
+                p.player_id,
+                p.nickname,
+                p.steal_attempt,
+                p.steal_success,
+                p.three_bet,
+                p.vpip,
+                p.pfr
+            FROM players p
+            ORDER BY p.steal_attempt DESC",
+
+		"player_aggression_by_street" => "
+            CREATE OR REPLACE VIEW player_aggression_by_street AS
+            SELECT 
+                p.player_id,
+                p.nickname,
+                ROUND(100 * SUM(CASE WHEN a.street = 'preflop' AND a.is_aggressive THEN 1 ELSE 0 END) / 
+                    NULLIF(SUM(CASE WHEN a.street = 'preflop' THEN 1 ELSE 0 END), 0), 2) as preflop_aggression,
+                ROUND(100 * SUM(CASE WHEN a.street = 'flop' AND a.is_aggressive THEN 1 ELSE 0 END) / 
+                    NULLIF(SUM(CASE WHEN a.street = 'flop' THEN 1 ELSE 0 END), 0), 2) as flop_aggression,
+                ROUND(100 * SUM(CASE WHEN a.street = 'turn' AND a.is_aggressive THEN 1 ELSE 0 END) / 
+                    NULLIF(SUM(CASE WHEN a.street = 'turn' THEN 1 ELSE 0 END), 0), 2) as turn_aggression,
+                ROUND(100 * SUM(CASE WHEN a.street = 'river' AND a.is_aggressive THEN 1 ELSE 0 END) / 
+                    NULLIF(SUM(CASE WHEN a.street = 'river' THEN 1 ELSE 0 END), 0), 2) as river_aggression
+            FROM players p
+            JOIN actions a ON p.player_id = a.player_id
+            GROUP BY p.player_id, p.nickname"
+	];
+
+	foreach ($views as $name => $sql) {
+		$pdo->exec($sql);
+		echo "Представление '$name' успешно создано\n";
 	}
 
 	echo "Инициализация базы данных успешно завершена!\n";
