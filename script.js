@@ -114,11 +114,13 @@ document
 			actions.splice(actions.length, 0, ...positions)
 
 			document
-				.querySelectorAll('[name="position"]')
+				.querySelectorAll('.position_wrapper')
 				.forEach((elem, key) => {
-					if (elem.value === this.value) current_position = key
-					elem.dataset.action = 'active'
-					elem.nextSibling.style.color = '#000000' // label
+					let radio = elem.querySelector('[name="position"]')
+					let label = elem.querySelector('label')
+					if (radio.value === this.value) current_position = key
+					radio.dataset.action = 'active'
+					label.style.color = '#000000'
 				})
 
 			new_position_ids = [
@@ -389,13 +391,24 @@ document
 		radios[next_index].checked = true
 
 		// сдвиг ID игроков на 1
+		// player_ids = []
+		// document
+		// 	.querySelectorAll('[name="position"]')
+		// 	.forEach(elem => {
+		// 		player_ids.push(elem.dataset.id)
+		// 		elem.dataset.action = 'active'
+		// 		elem.nextSibling.style.color = '#000000' // label
+		// 	})
+
 		player_ids = []
 		document
-			.querySelectorAll('[name="position"]')
-			.forEach(elem => {
-				player_ids.push(elem.dataset.id)
-				elem.dataset.action = 'active'
-				elem.nextSibling.style.color = '#000000' // label
+			.querySelectorAll('.position_wrapper')
+			.forEach((elem, key) => {
+				let radio = elem.querySelector('[name="position"]')
+				let label = elem.querySelector('label')
+				player_ids.push(radio.dataset.id)
+				radio.dataset.action = 'active'
+				label.style.color = '#000000'
 			})
 
 		const last_position = player_ids.shift()
