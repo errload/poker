@@ -418,7 +418,7 @@ try {
 	$content .= "- Улица, история действий\n";
 	$content .= "- Статус игроков (активен/выбыл)\n";
 	$content .= "- Оставшиеся игроки\n\n";
-	$content .= "Отвечай максимально коротко: действие (если рейз, то сколько) | описание (буквально 2-3 слова)\n";
+	$content .= "Отвечай максимально коротко: рейз, колл и т.д. (если рейз, то сколько) | буквально 2-3 слова для пояснения\n";
 	$content .= json_encode($analysisData, JSON_UNESCAPED_UNICODE);
 
 	$api_key = 'sk-JBDhoWZZwZSn8q2xmqmi9zETz12StFzC';
@@ -431,7 +431,7 @@ try {
 		CURLOPT_HTTPHEADER => $headers,
 		CURLOPT_POST => true,
 		CURLOPT_POSTFIELDS => json_encode([
-			'model' => 'gpt-4.1',
+			'model' => 'gpt-4o',
 			'messages' => [[ 'role' => 'user', 'content' => $content ]],
 			'temperature' => 0.3
 		])
