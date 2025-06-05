@@ -22,8 +22,13 @@ function generateRandomId(length = 6) {
 document
 	.querySelectorAll('[name="position"]')
 	.forEach((position, key) => {
-		position.dataset.id = generateRandomId()
-		if (key === 0) position.dataset.id = position_id
+		const random_id = generateRandomId()
+		position.dataset.id = random_id
+		position.closest('.position_wrapper').querySelector('.position_del_button').dataset.id = random_id
+		if (key === 0) {
+			position.dataset.id = position_id
+			position.closest('.position_wrapper').querySelector('.position_del_button').dataset.id = position_id
+		}
 		document.querySelectorAll('[name="board_stady"]')[0].checked = true
 		position_ids.push(position.dataset.id)
 	})
@@ -66,14 +71,14 @@ const sendAjax = async (url, params) => {
 
 // удаление игрока с БД
 document
-	.querySelector('.select_kick')
-	.addEventListener('change', async function () {
-		if (this.value === 'kick') return false
-		const result = await sendAjax(
+	.querySelectorAll('.position_del_button')
+	.forEach(button => {
+		button.addEventListener('click', async function () {
+			await sendAjax(
 			'/4bet/api/delete_player.php', {
-				player_id: this.value
+				player_id: this.dataset.id
 			})
-		this.value = 'kick'
+		})
 	})
 
 // чистка БД
@@ -86,6 +91,19 @@ document
 			})
 	})
 
+const showCurrentPlayer = () => {
+	console.log(start_position)
+	document
+		.querySelectorAll('.position_wrapper')
+		.forEach(elem => {
+			elem.style.border = 'none'
+		})
+
+	document
+		.querySelectorAll('.position_wrapper')[start_position]
+		.style.border = '1px solid #217c21'
+}
+
 // выбор позиции
 document
 	.querySelectorAll('[name="position"]')
@@ -93,6 +111,7 @@ document
 		elem.addEventListener('change', async function () {
 			let current_position = null
 
+			// сохранение карт оставшихся игроков
 			let players = []
 			document
 				.querySelectorAll('[name="position"]')
@@ -113,16 +132,6 @@ document
 			actions = []
 			actions.splice(actions.length, 0, ...positions)
 
-			document
-				.querySelectorAll('.position_wrapper')
-				.forEach((elem, key) => {
-					let radio = elem.querySelector('[name="position"]')
-					let label = elem.querySelector('label')
-					if (radio.value === this.value) current_position = key
-					radio.dataset.action = 'active'
-					label.style.color = '#000000'
-				})
-
 			new_position_ids = [
 				...position_ids.slice(-current_position),
 				...position_ids.slice(0, -current_position)
@@ -131,6 +140,14 @@ document
 			for (let i = 0; i < 8; i++) document
 				.querySelectorAll('[name="position"]')[i]
 				.dataset.id = new_position_ids[i]
+
+			document
+				.querySelectorAll('[name="position"]')
+				.forEach((elem, key) => {
+					if (elem.value === this.value) current_position = key
+					elem.dataset.action = 'active'
+					elem.nextElementSibling.style.color = '#000000'
+				})
 
 			// чистка борда
 			document
@@ -153,6 +170,7 @@ document
 
 			hand_id = result.hand_id
 			setStreetBidCounter()
+			showCurrentPlayer()
 		})
 	})
 
@@ -391,24 +409,13 @@ document
 		radios[next_index].checked = true
 
 		// сдвиг ID игроков на 1
-		// player_ids = []
-		// document
-		// 	.querySelectorAll('[name="position"]')
-		// 	.forEach(elem => {
-		// 		player_ids.push(elem.dataset.id)
-		// 		elem.dataset.action = 'active'
-		// 		elem.nextSibling.style.color = '#000000' // label
-		// 	})
-
 		player_ids = []
 		document
-			.querySelectorAll('.position_wrapper')
+			.querySelectorAll('[name="position"]')
 			.forEach((elem, key) => {
-				let radio = elem.querySelector('[name="position"]')
-				let label = elem.querySelector('label')
-				player_ids.push(radio.dataset.id)
-				radio.dataset.action = 'active'
-				label.style.color = '#000000'
+				player_ids.push(elem.dataset.id)
+				elem.dataset.action = 'active'
+				elem.nextElementSibling.style.color = '#000000'
 			})
 
 		const last_position = player_ids.shift()
@@ -439,6 +446,7 @@ document
 
 		hand_id = result.hand_id
 		setStreetBidCounter()
+		showCurrentPlayer()
 	})
 
 // обновление стека
@@ -514,6 +522,7 @@ document
 			document.querySelector('.line_result').textContent = ''
 			document.querySelector('.line_bids').textContent = ''
 			setStreetBidCounter()
+			showCurrentPlayer()
 		})
 	})
 
@@ -529,7 +538,7 @@ const getCurrentPosition = () => {
 		if (start_index !== -1) {
 			for (let i = 0; i < elements.length; i++) {
 				const current_index = (start_index + i) % elements.length
-				if (elements[current_index].dataset.action !== 'inactive') {
+				if (elements[current_index].dataset.action === 'active') {
 					found_element = elements[current_index]
 					start_position = current_index
 					break
@@ -551,7 +560,7 @@ document
 		const current_element = getCurrentPosition()
 		if (!current_element) return false
 		current_element.dataset.action = 'inactive'
-		current_element.nextSibling.style.color = '#e7e7e7' // label
+		current_element.nextElementSibling.style.color = '#e7e7e7'
 
 		await sendAjax('/4bet/api/action_handler.php', {
 			'hand_id': hand_id,
@@ -565,6 +574,7 @@ document
 		addBidDescription(`${current_element.value}:fold`)
 		start_position++
 		if (start_position > 7) start_position = 0
+		showCurrentPlayer()
 	})
 
 // call
@@ -589,6 +599,7 @@ document
 		addBidDescription(`${current_element.value}:call ${bid_counter} bb`)
 		start_position++
 		if (start_position > 7) start_position = 0
+		showCurrentPlayer()
 	})
 
 // check
@@ -750,7 +761,7 @@ document
 					const current_element = getCurrentPosition()
 					if (!current_element) return false
 					current_element.dataset.action = 'all-in'
-					current_element.nextSibling.style.color = '#e7e7e7' // label
+					current_element.nextElementSibling.style.color = '#e7e7e7'
 
 					await sendAjax('/4bet/api/action_handler.php', {
 						'hand_id': hand_id,
