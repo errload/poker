@@ -129,17 +129,49 @@ try {
 
 	// 8.2 Триггер для подсчета чек-рейзов
 	$pdo->exec("CREATE TRIGGER update_check_raises AFTER INSERT ON actions FOR EACH ROW
-    BEGIN
-        IF NEW.action_type = 'raise' AND EXISTS (
-            SELECT 1 FROM actions 
-            WHERE hand_id = NEW.hand_id AND player_id = NEW.player_id 
-            AND street = NEW.street AND action_type = 'check'
-            AND sequence_num < NEW.sequence_num
-        ) THEN
-            UPDATE players SET check_raises = IFNULL(check_raises, 0) + 1 
-            WHERE player_id = NEW.player_id;
-        END IF;
-    END");
+	BEGIN
+		DECLARE prev_check_exists INT DEFAULT 0;
+		DECLARE opponent_bet_exists INT DEFAULT 0;
+		
+		-- Проверяем, является ли текущее действие raise или all-in
+		IF NEW.action_type IN ('raise', 'all-in') THEN
+			-- 1. Проверяем, был ли чек от этого игрока в текущей улице до этого действия
+			SELECT COUNT(*) INTO prev_check_exists
+			FROM actions 
+			WHERE hand_id = NEW.hand_id 
+			  AND player_id = NEW.player_id 
+			  AND street = NEW.street 
+			  AND action_type = 'check'
+			  AND sequence_num < NEW.sequence_num;
+			
+			-- 2. Проверяем, была ли ставка оппонента между чеком и рейзом
+			IF prev_check_exists > 0 THEN
+				SELECT COUNT(*) INTO opponent_bet_exists
+				FROM actions
+				WHERE hand_id = NEW.hand_id
+				  AND player_id != NEW.player_id
+				  AND street = NEW.street
+				  AND action_type IN ('bet', 'raise', 'all-in')
+				  AND sequence_num > (
+					  SELECT MAX(sequence_num) 
+					  FROM actions 
+					  WHERE hand_id = NEW.hand_id 
+						AND player_id = NEW.player_id 
+						AND street = NEW.street 
+						AND action_type = 'check'
+						AND sequence_num < NEW.sequence_num
+				  )
+				  AND sequence_num < NEW.sequence_num;
+			END IF;
+			
+			-- Если оба условия выполнены, увеличиваем счетчик чек-рейзов
+			IF prev_check_exists > 0 AND opponent_bet_exists > 0 THEN
+				UPDATE players 
+				SET check_raises = IFNULL(check_raises, 0) + 1 
+				WHERE player_id = NEW.player_id;
+			END IF;
+		END IF;
+	END");
 
 	// 8.3 Триггер для VPIP
 	$pdo->exec("CREATE TRIGGER update_vpip AFTER INSERT ON actions FOR EACH ROW
