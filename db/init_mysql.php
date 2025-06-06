@@ -315,26 +315,51 @@ try {
 
 	// 8.6 Триггер для WTSD
 	$pdo->exec("CREATE TRIGGER update_wtsd AFTER INSERT ON actions FOR EACH ROW
-    BEGIN
-        DECLARE wtsd_count INT DEFAULT 0;
-        DECLARE total_hands INT DEFAULT 0;
-        
-        SELECT COUNT(DISTINCT h.hand_id) INTO wtsd_count FROM hands h
-        JOIN actions a ON h.hand_id = a.hand_id
-        WHERE a.player_id = NEW.player_id AND a.street = 'river'
-        AND NOT EXISTS (
-            SELECT 1 FROM actions f
-            WHERE f.hand_id = h.hand_id
-            AND f.player_id = NEW.player_id
-            AND f.action_type = 'fold'
-        );
-        
-        SELECT COUNT(DISTINCT hand_id) INTO total_hands FROM actions 
-        WHERE player_id = NEW.player_id;
-        
-        UPDATE players SET wtsd = IF(total_hands>0, ROUND((wtsd_count*100)/total_hands, 2), 0)
-        WHERE player_id = NEW.player_id;
-    END");
+	BEGIN
+		DECLARE wtsd_count INT DEFAULT 0;
+		DECLARE eligible_hands INT DEFAULT 0;  -- Раздачи, учитываемые в статистике
+		
+		-- 1. Считаем раздачи, где игрок дошел до шоудауна (не фолдил до вскрытия)
+		SELECT COUNT(DISTINCT h.hand_id) INTO wtsd_count 
+		FROM hands h
+		JOIN actions a ON h.hand_id = a.hand_id
+		WHERE a.player_id = NEW.player_id 
+		  AND a.street = 'river'
+		  AND NOT EXISTS (
+			  SELECT 1 FROM actions f
+			  WHERE f.hand_id = h.hand_id
+				AND f.player_id = NEW.player_id
+				AND f.action_type = 'fold'
+		  );
+		
+		-- 2. Считаем только валидные раздачи (где игрок хотя бы дошел до флопа)
+		SELECT COUNT(DISTINCT h.hand_id) INTO eligible_hands
+		FROM hands h
+		JOIN actions a ON h.hand_id = a.hand_id
+		WHERE a.player_id = NEW.player_id
+		  AND a.street IN ('flop', 'turn', 'river')
+		  AND h.hand_id IN (
+			  -- Раздачи, где игрок сделал хотя бы одно действие (не только блайнды)
+			  SELECT DISTINCT hand_id 
+			  FROM actions 
+			  WHERE player_id = NEW.player_id
+				AND (action_type != 'check' OR position IN ('SB', 'BB'))
+		  )
+		  AND NOT EXISTS (
+			  -- Исключаем раздачи, где игрок фолдил префлоп
+			  SELECT 1 FROM actions f
+			  WHERE f.hand_id = h.hand_id
+				AND f.player_id = NEW.player_id
+				AND f.street = 'preflop'
+				AND f.action_type = 'fold'
+		  );
+		
+		-- 3. Обновляем статистику только если есть валидные раздачи
+		UPDATE players 
+		SET wtsd = IF(eligible_hands > 0, ROUND((wtsd_count * 100) / eligible_hands, 0), 0),
+			last_seen = NOW() 
+		WHERE player_id = NEW.player_id;
+	END");
 
 	// 8.7 Триггер для WSD
 	$pdo->exec("CREATE TRIGGER update_wsd AFTER INSERT ON showdown FOR EACH ROW
