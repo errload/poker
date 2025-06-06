@@ -79,6 +79,13 @@ document
 			'/4bet/api/delete_player.php', {
 				player_id: this.dataset.id
 			})
+
+			const random_id = generateRandomId()
+			this.dataset.id = random_id
+			this
+				.closest('.position_wrapper')
+				.querySelector('[name="position"]')
+				.dataset.id = random_id
 		})
 	})
 
@@ -136,11 +143,9 @@ document
 			current_position = Array
 				.from(radios)
 				.findIndex(radio => radio.checked)
-			console.log(current_position)
 
 			actions = []
 			actions.splice(actions.length, 0, ...positions)
-			console.log(current_position)
 
 			new_position_ids = [
 				...position_ids.slice(-current_position),
