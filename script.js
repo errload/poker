@@ -28,6 +28,7 @@ document
 		if (key === 0) {
 			position.dataset.id = position_id
 			position.closest('.position_wrapper').querySelector('.position_del_button').dataset.id = position_id
+			position.checked = true
 		}
 		document.querySelectorAll('[name="board_stady"]')[0].checked = true
 		position_ids.push(position.dataset.id)

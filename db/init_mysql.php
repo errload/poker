@@ -622,49 +622,94 @@ try {
 	END");
 
 	// 8.13 Триггер для steal_attempt
+	$pdo->exec("CREATE TRIGGER mark_steal_attempt BEFORE INSERT ON actions FOR EACH ROW
+	BEGIN
+		DECLARE is_steal_attempt BOOLEAN DEFAULT FALSE;
+		
+		-- Определяем, является ли действие попыткой кражи
+		IF NEW.street = 'preflop' AND NEW.action_type IN ('bet', 'raise', 'all-in') THEN
+			-- Проверяем, что это действие с поздних позиций (CO, BTN, HJ)
+			IF NEW.position IN ('CO', 'BTN', 'HJ') THEN
+				-- Проверяем, что до этого были только фолды (кроме обязательных блайндов)
+				SELECT NOT EXISTS (
+					SELECT 1 FROM actions 
+					WHERE hand_id = NEW.hand_id 
+					AND street = 'preflop'
+					AND action_type IN ('raise', 'all-in')
+					AND sequence_num < NEW.sequence_num
+					AND position NOT IN ('SB', 'BB')
+				) INTO is_steal_attempt;
+				
+				-- Если это попытка кражи, помечаем действие
+				IF is_steal_attempt THEN
+					SET NEW.is_steal = 1;
+				ELSE
+					SET NEW.is_steal = 0;
+				END IF;
+			END IF;
+		END IF;
+	END");
+
 	$pdo->exec("CREATE TRIGGER update_steal_attempt AFTER INSERT ON actions FOR EACH ROW
-    BEGIN
-        DECLARE steal_attempts INT DEFAULT 0;
-        DECLARE total_hands INT DEFAULT 0;
-        
-        IF NEW.is_steal = 1 THEN
-            SELECT COUNT(DISTINCT hand_id) INTO steal_attempts FROM actions
-            WHERE player_id = NEW.player_id AND is_steal = 1;
-            
-            SELECT COUNT(DISTINCT hand_id) INTO total_hands FROM actions
-            WHERE player_id = NEW.player_id;
-            
-            UPDATE players SET 
-                steal_attempt = IF(total_hands>0, ROUND((steal_attempts*100)/total_hands, 2), 0)
-            WHERE player_id = NEW.player_id;
-        END IF;
-    END");
+	BEGIN
+		DECLARE steal_attempts INT DEFAULT 0;
+		DECLARE total_hands INT DEFAULT 0;
+		
+		-- Если это попытка кражи, обновляем статистику
+		IF NEW.is_steal = 1 THEN
+			-- Подсчет уникальных раздач с попытками кражи
+			SELECT COUNT(DISTINCT a.hand_id) INTO steal_attempts 
+			FROM actions a
+			WHERE a.player_id = NEW.player_id 
+			AND a.street = 'preflop'
+			AND a.action_type IN ('bet', 'raise', 'all-in')
+			AND a.position IN ('CO', 'BTN', 'HJ')
+			AND NOT EXISTS (
+				SELECT 1 FROM actions earlier
+				WHERE earlier.hand_id = a.hand_id
+				AND earlier.street = 'preflop'
+				AND earlier.action_type IN ('raise', 'all-in')
+				AND earlier.sequence_num < a.sequence_num
+				AND earlier.position NOT IN ('SB', 'BB')
+			);
+			
+			-- Общее количество раздач игрока
+			SELECT COUNT(DISTINCT hand_id) INTO total_hands 
+			FROM actions 
+			WHERE player_id = NEW.player_id;
+			
+			-- Обновление статистики
+			UPDATE players SET 
+				steal_attempt = IF(total_hands>0, ROUND((steal_attempts*100)/total_hands, 2), 0)
+			WHERE player_id = NEW.player_id;
+		END IF;
+	END");
 
 	// 8.14 Триггер для steal_success
 	$pdo->exec("CREATE TRIGGER update_steal_success AFTER INSERT ON actions FOR EACH ROW
-    BEGIN
-        DECLARE steal_success INT DEFAULT 0;
-        DECLARE steal_attempts INT DEFAULT 0;
-        
-        IF NEW.is_steal = 1 THEN
-            SELECT COUNT(DISTINCT a.hand_id) INTO steal_success FROM actions a
-            WHERE a.player_id = NEW.player_id AND a.is_steal = 1
-            AND NOT EXISTS (
-                SELECT 1 FROM actions o
-                WHERE o.hand_id = a.hand_id
-                AND o.player_id != NEW.player_id
-                AND o.street = 'preflop'
-                AND o.action_type IN ('raise','all-in')
-            );
-            
-            SELECT COUNT(DISTINCT hand_id) INTO steal_attempts FROM actions
-            WHERE player_id = NEW.player_id AND is_steal = 1;
-            
-            UPDATE players SET 
-                steal_success = IF(steal_attempts>0, ROUND((steal_success*100)/steal_attempts, 2), 0)
-            WHERE player_id = NEW.player_id;
-        END IF;
-    END");
+	BEGIN
+		DECLARE steal_success INT DEFAULT 0;
+		DECLARE steal_attempts INT DEFAULT 0;
+		
+		IF NEW.is_steal = 1 THEN
+			SELECT COUNT(DISTINCT a.hand_id) INTO steal_success FROM actions a
+			WHERE a.player_id = NEW.player_id AND a.is_steal = 1
+			AND NOT EXISTS (
+				SELECT 1 FROM actions o
+				WHERE o.hand_id = a.hand_id
+				AND o.player_id != NEW.player_id
+				AND o.street = 'preflop'
+				AND o.action_type IN ('raise','all-in')
+			);
+			
+			SELECT COUNT(DISTINCT hand_id) INTO steal_attempts FROM actions
+			WHERE player_id = NEW.player_id AND is_steal = 1;
+			
+			UPDATE players SET 
+				steal_success = IF(steal_attempts>0, ROUND((steal_success*100)/steal_attempts, 2), 0)
+			WHERE player_id = NEW.player_id;
+		END IF;
+	END");
 
 	// 8.15 Триггер для aggressive_actions
 	$pdo->exec("CREATE TRIGGER update_aggressive_actions AFTER INSERT ON actions FOR EACH ROW
