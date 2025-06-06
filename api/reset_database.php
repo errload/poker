@@ -23,8 +23,13 @@ try {
 	// Отключаем проверку внешних ключей для очистки таблиц
 	$pdo->exec("SET FOREIGN_KEY_CHECKS = 0");
 
-	// Получаем список всех таблиц в базе данных
-	$tables = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
+	// Получаем список только таблиц (исключая представления)
+	$tables = $pdo->query("
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = '".DB_NAME."' 
+        AND table_type = 'BASE TABLE'
+    ")->fetchAll(PDO::FETCH_COLUMN);
 
 	// Очищаем каждую таблицу
 	foreach ($tables as $table) {

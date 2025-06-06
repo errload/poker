@@ -500,20 +500,20 @@ try {
 
 	// 9.3 Представление для агрессии по улицам
 	$pdo->exec("CREATE OR REPLACE VIEW player_aggression_by_street AS
-    SELECT 
-        p.player_id,
-        p.nickname,
-        ROUND(100 * SUM(CASE WHEN a.street = 'preflop' AND a.is_aggressive THEN 1 ELSE 0 END) / 
-            NULLIF(SUM(CASE WHEN a.street = 'preflop' THEN 1 ELSE 0 END), 0), 2) AS preflop_aggression,
-        ROUND(100 * SUM(CASE WHEN a.street = 'flop' AND a.is_aggressive THEN 1 ELSE 0 END) / 
-            NULLIF(SUM(CASE WHEN a.street = 'flop' THEN 1 ELSE 0 END), 0), 2) AS flop_aggression,
-        ROUND(100 * SUM(CASE WHEN a.street = 'turn' AND a.is_aggressive THEN 1 ELSE 0 END) / 
-            NULLIF(SUM(CASE WHEN a.street = 'turn' THEN 1 ELSE 0 END), 0), 2) AS turn_aggression,
-        ROUND(100 * SUM(CASE WHEN a.street = 'river' AND a.is_aggressive THEN 1 ELSE 0 END) / 
-            NULLIF(SUM(CASE WHEN a.street = 'river' THEN 1 ELSE 0 END), 0), 2) AS river_aggression
-    FROM players p
-    JOIN actions a ON p.player_id = a.player_id
-    GROUP BY p.player_id, p.nickname");
+	SELECT 
+		p.player_id,
+		p.nickname,
+		ROUND(100 * SUM(CASE WHEN a.street = 'preflop' AND a.action_type IN ('bet','raise','all-in') THEN 1 ELSE 0 END) / 
+			NULLIF(SUM(CASE WHEN a.street = 'preflop' THEN 1 ELSE 0 END), 0), 2) AS preflop_aggression,
+		ROUND(100 * SUM(CASE WHEN a.street = 'flop' AND a.action_type IN ('bet','raise','all-in') THEN 1 ELSE 0 END) / 
+			NULLIF(SUM(CASE WHEN a.street = 'flop' THEN 1 ELSE 0 END), 0), 2) AS flop_aggression,
+		ROUND(100 * SUM(CASE WHEN a.street = 'turn' AND a.action_type IN ('bet','raise','all-in') THEN 1 ELSE 0 END) / 
+			NULLIF(SUM(CASE WHEN a.street = 'turn' THEN 1 ELSE 0 END), 0), 2) AS turn_aggression,
+		ROUND(100 * SUM(CASE WHEN a.street = 'river' AND a.action_type IN ('bet','raise','all-in') THEN 1 ELSE 0 END) / 
+			NULLIF(SUM(CASE WHEN a.street = 'river' THEN 1 ELSE 0 END), 0), 2) AS river_aggression
+	FROM players p
+	JOIN actions a ON p.player_id = a.player_id
+	GROUP BY p.player_id, p.nickname");
 
 	echo "Все представления успешно созданы\n";
 
