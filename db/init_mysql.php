@@ -562,28 +562,64 @@ try {
 
 	// 8.12 Триггер для fold_to_cbet
 	$pdo->exec("CREATE TRIGGER update_fold_to_cbet AFTER INSERT ON actions FOR EACH ROW
-    BEGIN
-        DECLARE folds INT DEFAULT 0;
-        DECLARE cbet_opps INT DEFAULT 0;
-        
-        IF NEW.action_type = 'fold' THEN
-            SELECT COUNT(DISTINCT a.hand_id) INTO folds FROM actions a
-            JOIN actions prev ON a.hand_id = prev.hand_id
-            WHERE a.player_id = NEW.player_id AND a.action_type = 'fold'
-            AND prev.is_cbet = 1 AND prev.street = a.street
-            AND prev.sequence_num < a.sequence_num AND prev.player_id != NEW.player_id;
-            
-            SELECT COUNT(DISTINCT prev.hand_id) INTO cbet_opps FROM actions prev
-            JOIN actions a ON prev.hand_id = a.hand_id
-            WHERE a.player_id = NEW.player_id AND prev.is_cbet = 1
-            AND prev.street = a.street AND prev.sequence_num < a.sequence_num
-            AND prev.player_id != NEW.player_id;
-            
-            UPDATE players SET 
-                fold_to_cbet = IF(cbet_opps>0, ROUND((folds*100)/cbet_opps, 2), 0)
-            WHERE player_id = NEW.player_id;
-        END IF;
-    END");
+	BEGIN
+		DECLARE folds INT DEFAULT 0;
+		DECLARE cbet_opps INT DEFAULT 0;
+		
+		IF NEW.action_type = 'fold' AND NEW.street = 'flop' THEN
+			-- Подсчитываем фолды непосредственно на cbet (без промежуточных действий)
+			SELECT COUNT(DISTINCT cb.hand_id) INTO folds 
+			FROM actions cb
+			WHERE cb.hand_id = NEW.hand_id
+			  AND cb.street = 'flop'
+			  AND cb.is_cbet = 1
+			  AND cb.player_id != NEW.player_id
+			  AND cb.sequence_num < NEW.sequence_num
+			  AND NOT EXISTS (
+				  -- Проверяем, что между cbet и фолдом не было других действий
+				  SELECT 1 FROM actions mid
+				  WHERE mid.hand_id = NEW.hand_id
+					AND mid.street = 'flop'
+					AND mid.sequence_num > cb.sequence_num
+					AND mid.sequence_num < NEW.sequence_num
+			  );
+			
+			-- Подсчитываем все реальные возможности для фолда на cbet
+			SELECT COUNT(DISTINCT cb.hand_id) INTO cbet_opps 
+			FROM actions cb
+			JOIN actions resp ON cb.hand_id = resp.hand_id
+			WHERE resp.player_id = NEW.player_id
+			  AND cb.street = 'flop'
+			  AND cb.is_cbet = 1
+			  AND cb.player_id != NEW.player_id
+			  AND cb.sequence_num < resp.sequence_num
+			  AND (
+				  -- Либо это первый ответ игрока на этой улице
+				  NOT EXISTS (
+					  SELECT 1 FROM actions earlier
+					  WHERE earlier.hand_id = resp.hand_id
+						AND earlier.player_id = resp.player_id
+						AND earlier.street = 'flop'
+						AND earlier.sequence_num < resp.sequence_num
+				  )
+				  OR
+				  -- Либо это первый ответ после cbet
+				  NOT EXISTS (
+					  SELECT 1 FROM actions between_act
+					  WHERE between_act.hand_id = resp.hand_id
+						AND between_act.player_id = resp.player_id
+						AND between_act.street = 'flop'
+						AND between_act.sequence_num > cb.sequence_num
+						AND between_act.sequence_num < resp.sequence_num
+				  )
+			  );
+			
+			-- Обновляем статистику
+			UPDATE players SET 
+				fold_to_cbet = IF(cbet_opps>0, ROUND((folds*100)/cbet_opps, 2), 0)
+			WHERE player_id = NEW.player_id;
+		END IF;
+	END");
 
 	// 8.13 Триггер для steal_attempt
 	$pdo->exec("CREATE TRIGGER update_steal_attempt AFTER INSERT ON actions FOR EACH ROW
