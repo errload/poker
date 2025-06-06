@@ -30,7 +30,6 @@ try {
         `afq` DECIMAL(5,2) DEFAULT 0.00,
         `three_bet` DECIMAL(5,2) DEFAULT 0.00,
         `wtsd` DECIMAL(5,2) DEFAULT 0.00,
-        `wsd` DECIMAL(5,2) DEFAULT 0.00,
         `hands_played` INT UNSIGNED DEFAULT 0,
         `showdowns` INT UNSIGNED DEFAULT 0,
         `preflop_raises` INT UNSIGNED DEFAULT 0,
@@ -99,7 +98,6 @@ try {
         `hand_id` INT NOT NULL,
         `player_id` VARCHAR(36) NOT NULL,
         `cards` VARCHAR(10) NOT NULL,
-        `won_amount` DECIMAL(15,2) DEFAULT 0.00,
         `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (`hand_id`) REFERENCES `hands`(`hand_id`) ON DELETE CASCADE,
         FOREIGN KEY (`player_id`) REFERENCES `players`(`player_id`) ON DELETE CASCADE,
@@ -112,7 +110,7 @@ try {
 	// 7. Удаление старых триггеров
 	$triggers = [
 		'update_last_seen', 'update_check_raises', 'update_vpip', 'update_pfr',
-		'update_three_bet', 'update_wtsd', 'update_wsd', 'update_af', 'update_afq',
+		'update_three_bet', 'update_wtsd', 'update_af', 'update_afq',
 		'update_postflop_raises', 'update_cbet', 'update_fold_to_cbet',
 		'update_steal_attempt', 'update_steal_success', 'update_aggressive_actions',
 		'update_passive_actions', 'update_hands_played', 'update_showdowns',
@@ -361,69 +359,70 @@ try {
 		WHERE player_id = NEW.player_id;
 	END");
 
-	// 8.7 Триггер для WSD
-	$pdo->exec("CREATE TRIGGER update_wsd AFTER INSERT ON showdown FOR EACH ROW
-    BEGIN
-        DECLARE wsd_count INT DEFAULT 0;
-        DECLARE wtsd_count INT DEFAULT 0;
-        
-        SELECT COUNT(DISTINCT s.hand_id) INTO wsd_count FROM showdown s
-        JOIN hands h ON s.hand_id = h.hand_id
-        WHERE s.player_id = NEW.player_id AND s.won_amount > 0;
-        
-        SELECT COUNT(DISTINCT h.hand_id) INTO wtsd_count FROM hands h
-        JOIN actions a ON h.hand_id = a.hand_id
-        WHERE a.player_id = NEW.player_id AND a.street = 'river'
-        AND NOT EXISTS (
-            SELECT 1 FROM actions f
-            WHERE f.hand_id = h.hand_id
-            AND f.player_id = NEW.player_id
-            AND f.action_type = 'fold'
-        );
-        
-        UPDATE players SET wsd = IF(wtsd_count>0, ROUND((wsd_count*100)/wtsd_count, 2), 0)
-        WHERE player_id = NEW.player_id;
-    END");
-
 	// 8.8 Триггер для AF
 	$pdo->exec("CREATE TRIGGER update_af AFTER INSERT ON actions FOR EACH ROW
-    BEGIN
-        DECLARE aggressive INT DEFAULT 0;
-        DECLARE passive INT DEFAULT 0;
-        
-        SELECT COUNT(*) INTO aggressive FROM actions
-        WHERE player_id = NEW.player_id
-        AND action_type IN ('bet','raise','all-in');
-        
-        SELECT COUNT(*) INTO passive FROM actions
-        WHERE player_id = NEW.player_id
-        AND action_type IN ('call','check');
-        
-        UPDATE players SET 
-            af = IF(passive>0, ROUND(aggressive/passive, 2), 
-                IF(aggressive>0, 99.99, 0))
-        WHERE player_id = NEW.player_id;
-    END");
+	BEGIN
+		DECLARE aggressive_actions INT DEFAULT 0;
+		DECLARE passive_actions INT DEFAULT 0;
+		
+		-- Подсчет агрессивных действий (беты, рейзы, алл-ины)
+		SELECT COUNT(*) INTO aggressive_actions FROM actions
+		WHERE player_id = NEW.player_id
+		AND action_type IN ('bet','raise','all-in');
+		
+		-- Подсчет пассивных действий (коллы, чеки)
+		-- Исключаем обязательные чеки в блайндах без действий оппонентов
+		SELECT COUNT(*) INTO passive_actions FROM actions
+		WHERE player_id = NEW.player_id
+		AND action_type IN ('call','check')
+		AND NOT (
+			action_type = 'check' 
+			AND position IN ('SB', 'BB') 
+			AND is_first_action = TRUE
+		);
+		
+		-- Обновляем статистику
+		UPDATE players SET 
+			af = IF(passive_actions > 0, 
+				   LEAST(99.99, ROUND(aggressive_actions/passive_actions, 2)),
+				   IF(aggressive_actions > 0, 99.99, 0)),
+			aggressive_actions = aggressive_actions,
+			passive_actions = passive_actions
+		WHERE player_id = NEW.player_id;
+	END");
 
 	// 8.9 Триггер для AFq
 	$pdo->exec("CREATE TRIGGER update_afq AFTER INSERT ON actions FOR EACH ROW
-    BEGIN
-        DECLARE aggressive INT DEFAULT 0;
-        DECLARE passive INT DEFAULT 0;
-        
-        SELECT COUNT(*) INTO aggressive FROM actions
-        WHERE player_id = NEW.player_id
-        AND action_type IN ('bet','raise','all-in');
-        
-        SELECT COUNT(*) INTO passive FROM actions
-        WHERE player_id = NEW.player_id
-        AND action_type IN ('call','check');
-        
-        UPDATE players SET 
-            afq = IF((aggressive+passive)>0, 
-                    ROUND((aggressive*100)/(aggressive+passive), 2), 0)
-        WHERE player_id = NEW.player_id;
-    END");
+	BEGIN
+		DECLARE aggressive INT DEFAULT 0;
+		DECLARE passive INT DEFAULT 0;
+		DECLARE total_actions INT DEFAULT 0;
+		
+		-- Подсчет агрессивных действий
+		SELECT COUNT(*) INTO aggressive FROM actions
+		WHERE player_id = NEW.player_id
+		AND action_type IN ('bet','raise','all-in');
+		
+		-- Подсчет пассивных действий
+		-- Исключаем обязательные чеки в блайндах без действий оппонентов
+		SELECT COUNT(*) INTO passive FROM actions
+		WHERE player_id = NEW.player_id
+		AND action_type IN ('call','check')
+		AND NOT (
+			action_type = 'check' 
+			AND position IN ('SB', 'BB') 
+			AND is_first_action = TRUE
+		);
+		
+		SET total_actions = aggressive + passive;
+		
+		-- Обновляем статистику
+		UPDATE players SET 
+			afq = IF(total_actions > 0, 
+					ROUND((aggressive*100)/total_actions, 2), 
+					0)
+		WHERE player_id = NEW.player_id;
+	END");
 
 	// 8.10 Триггер для postflop_raises
 	$pdo->exec("CREATE TRIGGER update_postflop_raises AFTER INSERT ON actions FOR EACH ROW
