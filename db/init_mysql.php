@@ -815,31 +815,130 @@ try {
 
 	// 8.19 Триггер для postflop_raise_pct
 	$pdo->exec("CREATE TRIGGER update_postflop_raise_pct AFTER INSERT ON actions FOR EACH ROW
-    BEGIN
-        DECLARE postflop_raises INT DEFAULT 0;
-        DECLARE total_hands INT DEFAULT 0;
-        
-        SELECT postflop_raises INTO postflop_raises FROM players WHERE player_id = NEW.player_id;
-        SELECT hands_played INTO total_hands FROM players WHERE player_id = NEW.player_id;
-        
-        UPDATE players SET 
-            postflop_raise_pct = IF(total_hands>0, ROUND((postflop_raises*100)/total_hands, 2), 0)
-        WHERE player_id = NEW.player_id;
-    END");
+	BEGIN
+		DECLARE postflop_raise_count INT DEFAULT 0;
+		DECLARE postflop_raise_opps INT DEFAULT 0;
+		
+		IF NEW.street IN ('flop', 'turn', 'river') THEN
+			-- Количество постфлопных рейзов (включая алл-ины)
+			SELECT COUNT(*) INTO postflop_raise_count FROM actions
+			WHERE player_id = NEW.player_id 
+			AND street IN ('flop', 'turn', 'river') 
+			AND action_type IN ('raise', 'all-in');
+			
+			-- Количество ВСЕХ возможностей для рейза (включая случаи, когда игрок не рейзил)
+			SELECT COUNT(*) INTO postflop_raise_opps
+			FROM actions a
+			JOIN actions b ON a.hand_id = b.hand_id AND a.street = b.street
+			WHERE a.player_id = NEW.player_id
+			AND a.street IN ('flop', 'turn', 'river')
+			AND b.player_id != NEW.player_id
+			AND b.action_type IN ('bet', 'raise', 'all-in')
+			AND b.sequence_num < a.sequence_num
+			AND (
+				-- Это первое действие игрока на улице
+				NOT EXISTS (
+					SELECT 1 FROM actions c
+					WHERE c.hand_id = a.hand_id
+					AND c.street = a.street
+					AND c.player_id = a.player_id
+					AND c.sequence_num < a.sequence_num
+				)
+				OR
+				-- Или это первое действие после ставки оппонента
+				NOT EXISTS (
+					SELECT 1 FROM actions d
+					WHERE d.hand_id = a.hand_id
+					AND d.street = a.street
+					AND d.player_id = a.player_id
+					AND d.sequence_num > (
+						SELECT MAX(e.sequence_num) FROM actions e
+						WHERE e.hand_id = b.hand_id
+						AND e.street = b.street
+						AND e.player_id = b.player_id
+						AND e.action_type IN ('bet', 'raise', 'all-in')
+						AND e.sequence_num < a.sequence_num
+					)
+					AND d.sequence_num < a.sequence_num
+				)
+			);
+			
+			-- Обновляем статистику
+			UPDATE players SET 
+				postflop_raise_pct = IF(postflop_raise_opps > 0, 
+									  ROUND((postflop_raise_count * 100) / postflop_raise_opps, 2), 
+									  0),
+				postflop_raises = postflop_raise_count
+			WHERE player_id = NEW.player_id;
+		END IF;
+	END");
 
 	// 8.20 Триггер для check_raise_pct
 	$pdo->exec("CREATE TRIGGER update_check_raise_pct AFTER INSERT ON actions FOR EACH ROW
-    BEGIN
-        DECLARE check_raises INT DEFAULT 0;
-        DECLARE total_hands INT DEFAULT 0;
-        
-        SELECT check_raises INTO check_raises FROM players WHERE player_id = NEW.player_id;
-        SELECT hands_played INTO total_hands FROM players WHERE player_id = NEW.player_id;
-        
-        UPDATE players SET 
-            check_raise_pct = IF(total_hands>0, ROUND((check_raises*100)/total_hands, 2), 0)
-        WHERE player_id = NEW.player_id;
-    END");
+	BEGIN
+		DECLARE check_raise_count INT DEFAULT 0;
+		DECLARE check_raise_opps INT DEFAULT 0;
+		
+		-- 1. Подсчёт реальных чек-рейзов
+		SELECT COUNT(*) INTO check_raise_count 
+		FROM actions a
+		WHERE a.player_id = NEW.player_id
+		  AND a.action_type IN ('raise', 'all-in')
+		  AND a.street IN ('flop', 'turn', 'river')
+		  AND EXISTS (
+			  -- Был чек перед рейзом
+			  SELECT 1 FROM actions prev
+			  WHERE prev.hand_id = a.hand_id
+				AND prev.player_id = a.player_id
+				AND prev.street = a.street
+				AND prev.action_type = 'check'
+				AND prev.sequence_num < a.sequence_num
+		  )
+		  AND EXISTS (
+			  -- После чека была ставка оппонента
+			  SELECT 1 FROM actions opp
+			  WHERE opp.hand_id = a.hand_id
+				AND opp.player_id != a.player_id
+				AND opp.street = a.street
+				AND opp.action_type IN ('bet', 'raise', 'all-in')
+				AND opp.sequence_num > (
+					SELECT MAX(prev.sequence_num) 
+					FROM actions prev
+					WHERE prev.hand_id = a.hand_id
+					  AND prev.player_id = a.player_id
+					  AND prev.street = a.street
+					  AND prev.action_type = 'check'
+				)
+				AND opp.sequence_num < a.sequence_num
+		  );
+		
+		-- 2. Подсчёт возможностей для чек-рейза
+		SELECT COUNT(DISTINCT a.hand_id) INTO check_raise_opps
+		FROM actions a
+		JOIN actions opp ON a.hand_id = opp.hand_id AND a.street = opp.street
+		WHERE a.player_id = NEW.player_id
+		  AND a.action_type = 'check'
+		  AND opp.player_id != NEW.player_id
+		  AND opp.action_type IN ('bet', 'raise', 'all-in')
+		  AND opp.sequence_num > a.sequence_num
+		  AND NOT EXISTS (
+			  -- Игрок не рейзил после чека в этой улице
+			  SELECT 1 FROM actions later
+			  WHERE later.hand_id = a.hand_id
+				AND later.player_id = a.player_id
+				AND later.street = a.street
+				AND later.action_type IN ('raise', 'all-in')
+				AND later.sequence_num > a.sequence_num
+		  );
+		
+		-- 3. Обновление статистики
+		UPDATE players 
+		SET check_raise_pct = IF(check_raise_opps > 0, 
+								ROUND((check_raise_count * 100) / check_raise_opps, 2), 
+								0),
+			check_raises = check_raise_count
+		WHERE player_id = NEW.player_id;
+	END");
 
 	// 8.21 Триггер для preflop_aggression
 	$pdo->exec("CREATE TRIGGER update_preflop_aggression AFTER INSERT ON actions FOR EACH ROW
