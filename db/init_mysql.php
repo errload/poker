@@ -820,54 +820,46 @@ try {
 		DECLARE postflop_raise_opps INT DEFAULT 0;
 		
 		IF NEW.street IN ('flop', 'turn', 'river') THEN
-			-- Количество постфлопных рейзов (включая алл-ины)
-			SELECT COUNT(*) INTO postflop_raise_count FROM actions
+			-- 1. Подсчет количества рейзов на постфлопе
+			SELECT COUNT(*) INTO postflop_raise_count 
+			FROM actions 
 			WHERE player_id = NEW.player_id 
-			AND street IN ('flop', 'turn', 'river') 
-			AND action_type IN ('raise', 'all-in');
+			  AND street IN ('flop', 'turn', 'river') 
+			  AND action_type IN ('raise', 'all-in');
 			
-			-- Количество ВСЕХ возможностей для рейза (включая случаи, когда игрок не рейзил)
-			SELECT COUNT(*) INTO postflop_raise_opps
+			-- 2. Подсчет возможностей для рейза (когда перед игроком была ставка)
+			SELECT COUNT(DISTINCT a.hand_id, a.street) INTO postflop_raise_opps
 			FROM actions a
-			JOIN actions b ON a.hand_id = b.hand_id AND a.street = b.street
+			JOIN actions opp_bet ON 
+				a.hand_id = opp_bet.hand_id 
+				AND a.street = opp_bet.street
+				AND opp_bet.player_id != a.player_id
+				AND opp_bet.action_type IN ('bet', 'raise', 'all-in')
+				AND opp_bet.sequence_num < a.sequence_num
 			WHERE a.player_id = NEW.player_id
-			AND a.street IN ('flop', 'turn', 'river')
-			AND b.player_id != NEW.player_id
-			AND b.action_type IN ('bet', 'raise', 'all-in')
-			AND b.sequence_num < a.sequence_num
-			AND (
-				-- Это первое действие игрока на улице
-				NOT EXISTS (
-					SELECT 1 FROM actions c
-					WHERE c.hand_id = a.hand_id
-					AND c.street = a.street
-					AND c.player_id = a.player_id
-					AND c.sequence_num < a.sequence_num
-				)
-				OR
-				-- Или это первое действие после ставки оппонента
-				NOT EXISTS (
-					SELECT 1 FROM actions d
-					WHERE d.hand_id = a.hand_id
-					AND d.street = a.street
-					AND d.player_id = a.player_id
-					AND d.sequence_num > (
-						SELECT MAX(e.sequence_num) FROM actions e
-						WHERE e.hand_id = b.hand_id
-						AND e.street = b.street
-						AND e.player_id = b.player_id
-						AND e.action_type IN ('bet', 'raise', 'all-in')
-						AND e.sequence_num < a.sequence_num
-					)
-					AND d.sequence_num < a.sequence_num
-				)
-			);
+			  AND a.street IN ('flop', 'turn', 'river')
+			  AND (
+				  -- Игрок сделал колл/фолд (не рейз)
+				  a.action_type IN ('call', 'fold') 
+				  -- ИЛИ он сделал рейз (учитываем и успешные рейзы)
+				  OR a.action_type IN ('raise', 'all-in')
+			  )
+			  -- Убедимся, что это первое действие игрока в ответ на ставку
+			  AND NOT EXISTS (
+				  SELECT 1 FROM actions earlier
+				  WHERE earlier.hand_id = a.hand_id
+					AND earlier.street = a.street
+					AND earlier.player_id = a.player_id
+					AND earlier.sequence_num < a.sequence_num
+			  );
 			
-			-- Обновляем статистику
+			-- 3. Обновляем статистику
 			UPDATE players SET 
-				postflop_raise_pct = IF(postflop_raise_opps > 0, 
-									  ROUND((postflop_raise_count * 100) / postflop_raise_opps, 2), 
-									  0),
+				postflop_raise_pct = IF(
+					postflop_raise_opps > 0, 
+					ROUND((postflop_raise_count * 100) / postflop_raise_opps, 2), 
+					0
+				),
 				postflop_raises = postflop_raise_count
 			WHERE player_id = NEW.player_id;
 		END IF;
@@ -877,67 +869,70 @@ try {
 	$pdo->exec("CREATE TRIGGER update_check_raise_pct AFTER INSERT ON actions FOR EACH ROW
 	BEGIN
 		DECLARE check_raise_count INT DEFAULT 0;
-		DECLARE check_raise_opps INT DEFAULT 0;
+		DECLARE check_raise_opportunities INT DEFAULT 0;
 		
-		-- 1. Подсчёт реальных чек-рейзов
-		SELECT COUNT(*) INTO check_raise_count 
-		FROM actions a
-		WHERE a.player_id = NEW.player_id
-		  AND a.action_type IN ('raise', 'all-in')
-		  AND a.street IN ('flop', 'turn', 'river')
-		  AND EXISTS (
-			  -- Был чек перед рейзом
-			  SELECT 1 FROM actions prev
-			  WHERE prev.hand_id = a.hand_id
-				AND prev.player_id = a.player_id
-				AND prev.street = a.street
-				AND prev.action_type = 'check'
-				AND prev.sequence_num < a.sequence_num
-		  )
-		  AND EXISTS (
-			  -- После чека была ставка оппонента
-			  SELECT 1 FROM actions opp
-			  WHERE opp.hand_id = a.hand_id
-				AND opp.player_id != a.player_id
-				AND opp.street = a.street
-				AND opp.action_type IN ('bet', 'raise', 'all-in')
-				AND opp.sequence_num > (
-					SELECT MAX(prev.sequence_num) 
-					FROM actions prev
-					WHERE prev.hand_id = a.hand_id
-					  AND prev.player_id = a.player_id
-					  AND prev.street = a.street
-					  AND prev.action_type = 'check'
-				)
-				AND opp.sequence_num < a.sequence_num
-		  );
+		-- 1. Считаем выполненные чек-рейзы (с явным указанием кодировки)
+		SELECT COUNT(*) INTO check_raise_count
+		FROM (
+			SELECT a.hand_id, a.street
+			FROM actions a
+			WHERE a.player_id COLLATE utf8mb4_unicode_ci = NEW.player_id COLLATE utf8mb4_unicode_ci
+			  AND a.action_type IN ('raise', 'all-in')
+			  AND a.street IN ('flop', 'turn', 'river')
+			  AND EXISTS (
+				  SELECT 1 FROM actions chk
+				  WHERE chk.hand_id = a.hand_id
+					AND chk.street COLLATE utf8mb4_unicode_ci = a.street COLLATE utf8mb4_unicode_ci
+					AND chk.player_id COLLATE utf8mb4_unicode_ci = a.player_id COLLATE utf8mb4_unicode_ci
+					AND chk.action_type = 'check'
+					AND chk.sequence_num < a.sequence_num
+			  )
+			  AND EXISTS (
+				  SELECT 1 FROM actions bet
+				  WHERE bet.hand_id = a.hand_id
+					AND bet.street COLLATE utf8mb4_unicode_ci = a.street COLLATE utf8mb4_unicode_ci
+					AND bet.player_id COLLATE utf8mb4_unicode_ci != a.player_id COLLATE utf8mb4_unicode_ci
+					AND bet.action_type IN ('bet', 'raise', 'all-in')
+					AND bet.sequence_num < a.sequence_num
+					AND bet.sequence_num > (
+						SELECT MAX(sequence_num)
+						FROM actions prev
+						WHERE prev.hand_id = a.hand_id
+						  AND prev.street COLLATE utf8mb4_unicode_ci = a.street COLLATE utf8mb4_unicode_ci
+						  AND prev.player_id COLLATE utf8mb4_unicode_ci = a.player_id COLLATE utf8mb4_unicode_ci
+						  AND prev.action_type = 'check'
+					)
+			  )
+			GROUP BY a.hand_id, a.street
+		) AS cr;
 		
-		-- 2. Подсчёт возможностей для чек-рейза
-		SELECT COUNT(DISTINCT a.hand_id) INTO check_raise_opps
-		FROM actions a
-		JOIN actions opp ON a.hand_id = opp.hand_id AND a.street = opp.street
-		WHERE a.player_id = NEW.player_id
-		  AND a.action_type = 'check'
-		  AND opp.player_id != NEW.player_id
-		  AND opp.action_type IN ('bet', 'raise', 'all-in')
-		  AND opp.sequence_num > a.sequence_num
-		  AND NOT EXISTS (
-			  -- Игрок не рейзил после чека в этой улице
-			  SELECT 1 FROM actions later
-			  WHERE later.hand_id = a.hand_id
-				AND later.player_id = a.player_id
-				AND later.street = a.street
-				AND later.action_type IN ('raise', 'all-in')
-				AND later.sequence_num > a.sequence_num
-		  );
+		-- 2. Считаем возможности для чек-рейза
+		SELECT COUNT(*) INTO check_raise_opportunities
+		FROM (
+			SELECT chk.hand_id, chk.street
+			FROM actions chk
+			WHERE chk.player_id COLLATE utf8mb4_unicode_ci = NEW.player_id COLLATE utf8mb4_unicode_ci
+			  AND chk.action_type = 'check'
+			  AND chk.street IN ('flop', 'turn', 'river')
+			  AND EXISTS (
+				  SELECT 1 FROM actions bet
+				  WHERE bet.hand_id = chk.hand_id
+					AND bet.street COLLATE utf8mb4_unicode_ci = chk.street COLLATE utf8mb4_unicode_ci
+					AND bet.player_id COLLATE utf8mb4_unicode_ci != chk.player_id COLLATE utf8mb4_unicode_ci
+					AND bet.action_type IN ('bet', 'raise', 'all-in')
+					AND bet.sequence_num > chk.sequence_num
+			  )
+			GROUP BY chk.hand_id, chk.street
+		) AS opportunities;
 		
-		-- 3. Обновление статистики
-		UPDATE players 
-		SET check_raise_pct = IF(check_raise_opps > 0, 
-								ROUND((check_raise_count * 100) / check_raise_opps, 2), 
-								0),
-			check_raises = check_raise_count
-		WHERE player_id = NEW.player_id;
+		-- 3. Обновляем статистику
+		UPDATE players
+		SET 
+			check_raises = check_raise_count,
+			check_raise_pct = IF(check_raise_opportunities > 0, 
+							   ROUND((check_raise_count * 100) / check_raise_opportunities, 2), 
+							   0)
+		WHERE player_id COLLATE utf8mb4_unicode_ci = NEW.player_id COLLATE utf8mb4_unicode_ci;
 	END");
 
 	// 8.21 Триггер для preflop_aggression
