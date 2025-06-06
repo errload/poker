@@ -42,6 +42,12 @@ try {
         `passive_actions` INT UNSIGNED DEFAULT 0,
         `steal_attempt` DECIMAL(5,2) DEFAULT 0.00,
         `steal_success` DECIMAL(5,2) DEFAULT 0.00,
+        `postflop_raise_pct` DECIMAL(5,2) DEFAULT 0.00,
+        `check_raise_pct` DECIMAL(5,2) DEFAULT 0.00,
+        `preflop_aggression` DECIMAL(5,2) DEFAULT 0.00,
+        `flop_aggression` DECIMAL(5,2) DEFAULT 0.00,
+        `turn_aggression` DECIMAL(5,2) DEFAULT 0.00,
+        `river_aggression` DECIMAL(5,2) DEFAULT 0.00,
         `last_seen` DATETIME DEFAULT CURRENT_TIMESTAMP,
         `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
         INDEX `idx_player_nickname` (`nickname`),
@@ -109,7 +115,9 @@ try {
 		'update_three_bet', 'update_wtsd', 'update_wsd', 'update_af', 'update_afq',
 		'update_postflop_raises', 'update_cbet', 'update_fold_to_cbet',
 		'update_steal_attempt', 'update_steal_success', 'update_aggressive_actions',
-		'update_passive_actions', 'update_hands_played', 'update_showdowns'
+		'update_passive_actions', 'update_hands_played', 'update_showdowns',
+		'update_postflop_raise_pct', 'update_check_raise_pct', 'update_preflop_aggression',
+		'update_flop_aggression', 'update_turn_aggression', 'update_river_aggression'
 	];
 
 	foreach ($triggers as $trigger) {
@@ -129,49 +137,45 @@ try {
 
 	// 8.2 Триггер для подсчета чек-рейзов
 	$pdo->exec("CREATE TRIGGER update_check_raises AFTER INSERT ON actions FOR EACH ROW
-	BEGIN
-		DECLARE prev_check_exists INT DEFAULT 0;
-		DECLARE opponent_bet_exists INT DEFAULT 0;
-		
-		-- Проверяем, является ли текущее действие raise или all-in
-		IF NEW.action_type IN ('raise', 'all-in') THEN
-			-- 1. Проверяем, был ли чек от этого игрока в текущей улице до этого действия
-			SELECT COUNT(*) INTO prev_check_exists
-			FROM actions 
-			WHERE hand_id = NEW.hand_id 
-			  AND player_id = NEW.player_id 
-			  AND street = NEW.street 
-			  AND action_type = 'check'
-			  AND sequence_num < NEW.sequence_num;
-			
-			-- 2. Проверяем, была ли ставка оппонента между чеком и рейзом
-			IF prev_check_exists > 0 THEN
-				SELECT COUNT(*) INTO opponent_bet_exists
-				FROM actions
-				WHERE hand_id = NEW.hand_id
-				  AND player_id != NEW.player_id
-				  AND street = NEW.street
-				  AND action_type IN ('bet', 'raise', 'all-in')
-				  AND sequence_num > (
-					  SELECT MAX(sequence_num) 
-					  FROM actions 
-					  WHERE hand_id = NEW.hand_id 
-						AND player_id = NEW.player_id 
-						AND street = NEW.street 
-						AND action_type = 'check'
-						AND sequence_num < NEW.sequence_num
-				  )
-				  AND sequence_num < NEW.sequence_num;
-			END IF;
-			
-			-- Если оба условия выполнены, увеличиваем счетчик чек-рейзов
-			IF prev_check_exists > 0 AND opponent_bet_exists > 0 THEN
-				UPDATE players 
-				SET check_raises = IFNULL(check_raises, 0) + 1 
-				WHERE player_id = NEW.player_id;
-			END IF;
-		END IF;
-	END");
+    BEGIN
+        DECLARE prev_check_exists INT DEFAULT 0;
+        DECLARE opponent_bet_exists INT DEFAULT 0;
+        
+        IF NEW.action_type IN ('raise', 'all-in') THEN
+            SELECT COUNT(*) INTO prev_check_exists
+            FROM actions 
+            WHERE hand_id = NEW.hand_id 
+              AND player_id = NEW.player_id 
+              AND street = NEW.street 
+              AND action_type = 'check'
+              AND sequence_num < NEW.sequence_num;
+            
+            IF prev_check_exists > 0 THEN
+                SELECT COUNT(*) INTO opponent_bet_exists
+                FROM actions
+                WHERE hand_id = NEW.hand_id
+                  AND player_id != NEW.player_id
+                  AND street = NEW.street
+                  AND action_type IN ('bet', 'raise', 'all-in')
+                  AND sequence_num > (
+                      SELECT MAX(sequence_num) 
+                      FROM actions 
+                      WHERE hand_id = NEW.hand_id 
+                        AND player_id = NEW.player_id 
+                        AND street = NEW.street 
+                        AND action_type = 'check'
+                        AND sequence_num < NEW.sequence_num
+                  )
+                  AND sequence_num < NEW.sequence_num;
+            END IF;
+            
+            IF prev_check_exists > 0 AND opponent_bet_exists > 0 THEN
+                UPDATE players 
+                SET check_raises = IFNULL(check_raises, 0) + 1 
+                WHERE player_id = NEW.player_id;
+            END IF;
+        END IF;
+    END");
 
 	// 8.3 Триггер для VPIP
 	$pdo->exec("CREATE TRIGGER update_vpip AFTER INSERT ON actions FOR EACH ROW
@@ -207,7 +211,7 @@ try {
             WHERE player_id = NEW.player_id AND street = 'preflop';
             
             UPDATE players SET 
-                pfr = IF(total_hands>0, ROUND((pfr_count*100)/total_hands, 2), 0),
+                pfr = IF(total_hands>0, ROUND((pfr_count*100)/total_hands, 2),
                 preflop_raises = pfr_count
             WHERE player_id = NEW.player_id;
         END IF;
@@ -466,57 +470,115 @@ try {
         WHERE player_id = NEW.player_id;
     END");
 
+	// 8.19 Триггер для postflop_raise_pct
+	$pdo->exec("CREATE TRIGGER update_postflop_raise_pct AFTER INSERT ON actions FOR EACH ROW
+    BEGIN
+        DECLARE postflop_raises INT DEFAULT 0;
+        DECLARE total_hands INT DEFAULT 0;
+        
+        SELECT postflop_raises INTO postflop_raises FROM players WHERE player_id = NEW.player_id;
+        SELECT hands_played INTO total_hands FROM players WHERE player_id = NEW.player_id;
+        
+        UPDATE players SET 
+            postflop_raise_pct = IF(total_hands>0, ROUND((postflop_raises*100)/total_hands, 2), 0)
+        WHERE player_id = NEW.player_id;
+    END");
+
+	// 8.20 Триггер для check_raise_pct
+	$pdo->exec("CREATE TRIGGER update_check_raise_pct AFTER INSERT ON actions FOR EACH ROW
+    BEGIN
+        DECLARE check_raises INT DEFAULT 0;
+        DECLARE total_hands INT DEFAULT 0;
+        
+        SELECT check_raises INTO check_raises FROM players WHERE player_id = NEW.player_id;
+        SELECT hands_played INTO total_hands FROM players WHERE player_id = NEW.player_id;
+        
+        UPDATE players SET 
+            check_raise_pct = IF(total_hands>0, ROUND((check_raises*100)/total_hands, 2), 0)
+        WHERE player_id = NEW.player_id;
+    END");
+
+	// 8.21 Триггер для preflop_aggression
+	$pdo->exec("CREATE TRIGGER update_preflop_aggression AFTER INSERT ON actions FOR EACH ROW
+    BEGIN
+        DECLARE aggressive_actions INT DEFAULT 0;
+        DECLARE total_actions INT DEFAULT 0;
+        
+        IF NEW.street = 'preflop' THEN
+            SELECT COUNT(*) INTO aggressive_actions FROM actions
+            WHERE player_id = NEW.player_id AND street = 'preflop'
+            AND action_type IN ('bet','raise','all-in');
+            
+            SELECT COUNT(*) INTO total_actions FROM actions
+            WHERE player_id = NEW.player_id AND street = 'preflop';
+            
+            UPDATE players SET 
+                preflop_aggression = IF(total_actions>0, ROUND((aggressive_actions*100)/total_actions, 2), 0)
+            WHERE player_id = NEW.player_id;
+        END IF;
+    END");
+
+	// 8.22 Триггер для flop_aggression
+	$pdo->exec("CREATE TRIGGER update_flop_aggression AFTER INSERT ON actions FOR EACH ROW
+    BEGIN
+        DECLARE aggressive_actions INT DEFAULT 0;
+        DECLARE total_actions INT DEFAULT 0;
+        
+        IF NEW.street = 'flop' THEN
+            SELECT COUNT(*) INTO aggressive_actions FROM actions
+            WHERE player_id = NEW.player_id AND street = 'flop'
+            AND action_type IN ('bet','raise','all-in');
+            
+            SELECT COUNT(*) INTO total_actions FROM actions
+            WHERE player_id = NEW.player_id AND street = 'flop';
+            
+            UPDATE players SET 
+                flop_aggression = IF(total_actions>0, ROUND((aggressive_actions*100)/total_actions, 2), 0)
+            WHERE player_id = NEW.player_id;
+        END IF;
+    END");
+
+	// 8.23 Триггер для turn_aggression
+	$pdo->exec("CREATE TRIGGER update_turn_aggression AFTER INSERT ON actions FOR EACH ROW
+    BEGIN
+        DECLARE aggressive_actions INT DEFAULT 0;
+        DECLARE total_actions INT DEFAULT 0;
+        
+        IF NEW.street = 'turn' THEN
+            SELECT COUNT(*) INTO aggressive_actions FROM actions
+            WHERE player_id = NEW.player_id AND street = 'turn'
+            AND action_type IN ('bet','raise','all-in');
+            
+            SELECT COUNT(*) INTO total_actions FROM actions
+            WHERE player_id = NEW.player_id AND street = 'turn';
+            
+            UPDATE players SET 
+                turn_aggression = IF(total_actions>0, ROUND((aggressive_actions*100)/total_actions, 2), 0)
+            WHERE player_id = NEW.player_id;
+        END IF;
+    END");
+
+	// 8.24 Триггер для river_aggression
+	$pdo->exec("CREATE TRIGGER update_river_aggression AFTER INSERT ON actions FOR EACH ROW
+    BEGIN
+        DECLARE aggressive_actions INT DEFAULT 0;
+        DECLARE total_actions INT DEFAULT 0;
+        
+        IF NEW.street = 'river' THEN
+            SELECT COUNT(*) INTO aggressive_actions FROM actions
+            WHERE player_id = NEW.player_id AND street = 'river'
+            AND action_type IN ('bet','raise','all-in');
+            
+            SELECT COUNT(*) INTO total_actions FROM actions
+            WHERE player_id = NEW.player_id AND street = 'river';
+            
+            UPDATE players SET 
+                river_aggression = IF(total_actions>0, ROUND((aggressive_actions*100)/total_actions, 2), 0)
+            WHERE player_id = NEW.player_id;
+        END IF;
+    END");
+
 	echo "Все триггеры успешно созданы\n";
-
-	// 9. Создание представлений
-	// 9.1 Представление для постфлоп статистики
-	$pdo->exec("CREATE OR REPLACE VIEW player_postflop_stats AS
-    SELECT 
-        p.player_id,
-        p.nickname,
-        p.postflop_raises,
-        p.check_raises,
-        p.af,
-        p.afq,
-        p.cbet,
-        p.fold_to_cbet,
-        ROUND(100 * p.postflop_raises / NULLIF(p.hands_played, 0), 2) AS postflop_raise_pct,
-        ROUND(100 * p.check_raises / NULLIF(p.hands_played, 0), 2) AS check_raise_pct
-    FROM players p
-    ORDER BY p.postflop_raises DESC");
-
-	// 9.2 Представление для стил статистики
-	$pdo->exec("CREATE OR REPLACE VIEW player_steal_stats AS
-    SELECT 
-        p.player_id,
-        p.nickname,
-        p.steal_attempt,
-        p.steal_success,
-        p.three_bet,
-        p.vpip,
-        p.pfr
-    FROM players p
-    ORDER BY p.steal_attempt DESC");
-
-	// 9.3 Представление для агрессии по улицам
-	$pdo->exec("CREATE OR REPLACE VIEW player_aggression_by_street AS
-	SELECT 
-		p.player_id,
-		p.nickname,
-		ROUND(100 * SUM(CASE WHEN a.street = 'preflop' AND a.action_type IN ('bet','raise','all-in') THEN 1 ELSE 0 END) / 
-			NULLIF(SUM(CASE WHEN a.street = 'preflop' THEN 1 ELSE 0 END), 0), 2) AS preflop_aggression,
-		ROUND(100 * SUM(CASE WHEN a.street = 'flop' AND a.action_type IN ('bet','raise','all-in') THEN 1 ELSE 0 END) / 
-			NULLIF(SUM(CASE WHEN a.street = 'flop' THEN 1 ELSE 0 END), 0), 2) AS flop_aggression,
-		ROUND(100 * SUM(CASE WHEN a.street = 'turn' AND a.action_type IN ('bet','raise','all-in') THEN 1 ELSE 0 END) / 
-			NULLIF(SUM(CASE WHEN a.street = 'turn' THEN 1 ELSE 0 END), 0), 2) AS turn_aggression,
-		ROUND(100 * SUM(CASE WHEN a.street = 'river' AND a.action_type IN ('bet','raise','all-in') THEN 1 ELSE 0 END) / 
-			NULLIF(SUM(CASE WHEN a.street = 'river' THEN 1 ELSE 0 END), 0), 2) AS river_aggression
-	FROM players p
-	JOIN actions a ON p.player_id = a.player_id
-	GROUP BY p.player_id, p.nickname");
-
-	echo "Все представления успешно созданы\n";
-
 	echo "Инициализация базы данных успешно завершена!\n";
 
 } catch (PDOException $e) {
