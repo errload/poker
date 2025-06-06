@@ -240,36 +240,75 @@ try {
 	BEGIN
 		DECLARE three_bets INT DEFAULT 0;
 		DECLARE raise_opps INT DEFAULT 0;
+		DECLARE total_3bet_opps INT DEFAULT 0;
 		
-		IF NEW.street = 'preflop' AND (NEW.action_type = 'raise' OR NEW.action_type = 'all-in') THEN
-			-- Считаем 3-bet: рейз после любого бет/рейза (кроме блайндов)
+		IF NEW.street = 'preflop' THEN
+			-- Подсчет реальных 3-bet (когда игрок действительно сделал рейз после открытия)
 			SELECT COUNT(DISTINCT a1.hand_id) INTO three_bets 
 			FROM actions a1
-			JOIN actions a2 ON a1.hand_id = a2.hand_id
+			JOIN (
+				-- Находим первое открытие в раздаче (не считая блайнды)
+				SELECT hand_id, MIN(sequence_num) as min_seq
+				FROM actions
+				WHERE street = 'preflop'
+				  AND (action_type = 'bet' OR action_type = 'raise' OR action_type = 'all-in')
+				  AND (position NOT IN ('SB', 'BB') OR action_type != 'bet')
+				GROUP BY hand_id
+			) first_raise ON a1.hand_id = first_raise.hand_id
+			JOIN actions a2 ON a1.hand_id = a2.hand_id 
+				AND a2.sequence_num = first_raise.min_seq
 			WHERE a1.player_id = NEW.player_id 
 			  AND a1.street = 'preflop'
 			  AND (a1.action_type = 'raise' OR a1.action_type = 'all-in')
 			  AND a2.player_id != NEW.player_id
-			  AND a2.street = 'preflop' 
-			  AND (a2.action_type = 'bet' OR a2.action_type = 'raise' OR a2.action_type = 'all-in')
-			  AND a2.sequence_num < a1.sequence_num;
-			
-			-- Считаем возможности для 3-bet: любые бет/рейзы оппонентов перед игроком
-			SELECT COUNT(DISTINCT a2.hand_id) INTO raise_opps 
-			FROM actions a2
-			WHERE a2.player_id = NEW.player_id 
-			  AND a2.street = 'preflop'
-			  AND (a2.action_type = 'raise' OR a2.action_type = 'all-in')
-			  AND EXISTS (
+			  AND a1.sequence_num > a2.sequence_num
+			  AND NOT EXISTS (
+				  -- Игрок не делал рейзов до этого в этой раздаче
 				  SELECT 1 FROM actions a3
-				  WHERE a3.hand_id = a2.hand_id
-					AND a3.player_id != NEW.player_id
+				  WHERE a3.hand_id = a1.hand_id
+					AND a3.player_id = NEW.player_id
 					AND a3.street = 'preflop'
-					AND (a3.action_type = 'bet' OR a3.action_type = 'raise' OR a3.action_type = 'all-in')
-					AND a3.sequence_num < a2.sequence_num
+					AND (a3.action_type = 'raise' OR a3.action_type = 'all-in')
+					AND a3.sequence_num < a1.sequence_num
 			  );
 			
-			UPDATE players SET three_bet = IF(raise_opps>0, ROUND((three_bets*100)/raise_opps, 2), 0)
+			-- Подсчет ВСЕХ возможностей для 3-bet (включая фолды и коллы)
+			SELECT COUNT(DISTINCT fr.hand_id) INTO raise_opps 
+			FROM (
+				-- Все первые открытия в раздачах
+				SELECT hand_id, MIN(sequence_num) as min_seq
+				FROM actions
+				WHERE street = 'preflop'
+				  AND (action_type = 'bet' OR action_type = 'raise' OR action_type = 'all-in')
+				  AND (position NOT IN ('SB', 'BB') OR action_type != 'bet')
+				GROUP BY hand_id
+			) fr
+			JOIN actions a ON fr.hand_id = a.hand_id
+			WHERE a.player_id = NEW.player_id
+			  AND a.street = 'preflop'
+			  AND a.sequence_num > fr.min_seq
+			  AND NOT EXISTS (
+				  -- Игрок не делал рейзов до этого в этой раздаче
+				  SELECT 1 FROM actions a3
+				  WHERE a3.hand_id = a.hand_id
+					AND a3.player_id = NEW.player_id
+					AND a3.street = 'preflop'
+					AND (a3.action_type = 'raise' OR a3.action_type = 'all-in')
+					AND a3.sequence_num < a.sequence_num
+			  )
+			  AND EXISTS (
+				  -- Убедимся, что игрок действовал после открытия (не обязательно рейзом)
+				  SELECT 1 FROM actions a4
+				  WHERE a4.hand_id = a.hand_id
+					AND a4.player_id = NEW.player_id
+					AND a4.street = 'preflop'
+					AND a4.sequence_num > fr.min_seq
+			  );
+			
+			-- Обновляем статистику
+			UPDATE players 
+			SET three_bet = IF(raise_opps > 0, ROUND((three_bets * 100) / raise_opps, 2), 0),
+				preflop_raises = three_bets
 			WHERE player_id = NEW.player_id;
 		END IF;
 	END");
