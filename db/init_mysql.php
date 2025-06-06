@@ -137,45 +137,63 @@ try {
 
 	// 8.2 Триггер для подсчета чек-рейзов
 	$pdo->exec("CREATE TRIGGER update_check_raises AFTER INSERT ON actions FOR EACH ROW
-    BEGIN
-        DECLARE prev_check_exists INT DEFAULT 0;
-        DECLARE opponent_bet_exists INT DEFAULT 0;
-        
-        IF NEW.action_type IN ('raise', 'all-in') THEN
-            SELECT COUNT(*) INTO prev_check_exists
-            FROM actions 
-            WHERE hand_id = NEW.hand_id 
-              AND player_id = NEW.player_id 
-              AND street = NEW.street 
-              AND action_type = 'check'
-              AND sequence_num < NEW.sequence_num;
-            
-            IF prev_check_exists > 0 THEN
-                SELECT COUNT(*) INTO opponent_bet_exists
-                FROM actions
-                WHERE hand_id = NEW.hand_id
-                  AND player_id != NEW.player_id
-                  AND street = NEW.street
-                  AND action_type IN ('bet', 'raise', 'all-in')
-                  AND sequence_num > (
-                      SELECT MAX(sequence_num) 
-                      FROM actions 
-                      WHERE hand_id = NEW.hand_id 
-                        AND player_id = NEW.player_id 
-                        AND street = NEW.street 
-                        AND action_type = 'check'
-                        AND sequence_num < NEW.sequence_num
-                  )
-                  AND sequence_num < NEW.sequence_num;
-            END IF;
-            
-            IF prev_check_exists > 0 AND opponent_bet_exists > 0 THEN
-                UPDATE players 
-                SET check_raises = IFNULL(check_raises, 0) + 1 
-                WHERE player_id = NEW.player_id;
-            END IF;
-        END IF;
-    END");
+	BEGIN
+		DECLARE prev_check_seq INT DEFAULT NULL;
+		DECLARE opponent_aggressive_action_exists INT DEFAULT 0;
+		
+		-- Только для рейзов/алл-инов на постфлопе
+		IF NEW.action_type IN ('raise', 'all-in') AND NEW.street IN ('flop', 'turn', 'river') THEN
+			-- Находим последний чек этого игрока на этой улице перед рейзом
+			SELECT MAX(sequence_num) INTO prev_check_seq
+			FROM actions 
+			WHERE hand_id = NEW.hand_id 
+			  AND player_id = NEW.player_id 
+			  AND street = NEW.street 
+			  AND action_type = 'check'
+			  AND sequence_num < NEW.sequence_num;
+			
+			-- Если чек был найден
+			IF prev_check_seq IS NOT NULL THEN
+				-- Проверяем, были ли после чека агрессивные действия оппонентов (бет/рейз/алл-ин)
+				-- перед нашим рейзом
+				SELECT COUNT(*) INTO opponent_aggressive_action_exists
+				FROM actions
+				WHERE hand_id = NEW.hand_id
+				  AND player_id != NEW.player_id
+				  AND street = NEW.street
+				  AND action_type IN ('bet', 'raise', 'all-in')
+				  AND sequence_num > prev_check_seq
+				  AND sequence_num < NEW.sequence_num
+				  -- Убедимся, что это было первое агрессивное действие после чека
+				  AND NOT EXISTS (
+					  SELECT 1 FROM actions a2
+					  WHERE a2.hand_id = actions.hand_id
+						AND a2.street = actions.street
+						AND a2.action_type IN ('bet', 'raise', 'all-in')
+						AND a2.sequence_num > prev_check_seq
+						AND a2.sequence_num < actions.sequence_num
+				  );
+				
+				-- Если между чеком и рейзом было агрессивное действие оппонента
+				IF opponent_aggressive_action_exists > 0 THEN
+					-- Дополнительная проверка: чек должен быть первым действием игрока на улице
+					-- (исключаем случаи, когда игрок сначала коллирует, потом чекает, потом рейзит)
+					IF NOT EXISTS (
+						SELECT 1 FROM actions
+						WHERE hand_id = NEW.hand_id
+						  AND player_id = NEW.player_id
+						  AND street = NEW.street
+						  AND action_type != 'check'
+						  AND sequence_num < prev_check_seq
+					) THEN
+						UPDATE players 
+						SET check_raises = check_raises + 1 
+						WHERE player_id = NEW.player_id;
+					END IF;
+				END IF;
+			END IF;
+		END IF;
+	END");
 
 	// 8.3 Триггер для VPIP
 	$pdo->exec("CREATE TRIGGER update_vpip AFTER INSERT ON actions FOR EACH ROW
@@ -219,26 +237,42 @@ try {
 
 	// 8.5 Триггер для 3-bet
 	$pdo->exec("CREATE TRIGGER update_three_bet AFTER INSERT ON actions FOR EACH ROW
-    BEGIN
-        DECLARE three_bets INT DEFAULT 0;
-        DECLARE raise_opps INT DEFAULT 0;
-        
-        IF NEW.street = 'preflop' AND NEW.action_type IN ('raise','all-in') THEN
-            SELECT COUNT(DISTINCT a1.hand_id) INTO three_bets FROM actions a1
-            JOIN actions a2 ON a1.hand_id = a2.hand_id
-            WHERE a1.player_id = NEW.player_id AND a1.street = 'preflop'
-            AND a1.action_type IN ('raise','all-in')
-            AND a2.street = 'preflop' AND a2.action_type IN ('bet','raise','all-in')
-            AND a2.sequence_num < a1.sequence_num;
-            
-            SELECT COUNT(DISTINCT a2.hand_id) INTO raise_opps FROM actions a2
-            WHERE a2.player_id = NEW.player_id AND a2.street = 'preflop'
-            AND a2.action_type IN ('bet','raise','all-in');
-            
-            UPDATE players SET three_bet = IF(raise_opps>0, ROUND((three_bets*100)/raise_opps, 2), 0)
-            WHERE player_id = NEW.player_id;
-        END IF;
-    END");
+	BEGIN
+		DECLARE three_bets INT DEFAULT 0;
+		DECLARE raise_opps INT DEFAULT 0;
+		
+		IF NEW.street = 'preflop' AND (NEW.action_type = 'raise' OR NEW.action_type = 'all-in') THEN
+			-- Считаем 3-bet: рейз после любого бет/рейза (кроме блайндов)
+			SELECT COUNT(DISTINCT a1.hand_id) INTO three_bets 
+			FROM actions a1
+			JOIN actions a2 ON a1.hand_id = a2.hand_id
+			WHERE a1.player_id = NEW.player_id 
+			  AND a1.street = 'preflop'
+			  AND (a1.action_type = 'raise' OR a1.action_type = 'all-in')
+			  AND a2.player_id != NEW.player_id
+			  AND a2.street = 'preflop' 
+			  AND (a2.action_type = 'bet' OR a2.action_type = 'raise' OR a2.action_type = 'all-in')
+			  AND a2.sequence_num < a1.sequence_num;
+			
+			-- Считаем возможности для 3-bet: любые бет/рейзы оппонентов перед игроком
+			SELECT COUNT(DISTINCT a2.hand_id) INTO raise_opps 
+			FROM actions a2
+			WHERE a2.player_id = NEW.player_id 
+			  AND a2.street = 'preflop'
+			  AND (a2.action_type = 'raise' OR a2.action_type = 'all-in')
+			  AND EXISTS (
+				  SELECT 1 FROM actions a3
+				  WHERE a3.hand_id = a2.hand_id
+					AND a3.player_id != NEW.player_id
+					AND a3.street = 'preflop'
+					AND (a3.action_type = 'bet' OR a3.action_type = 'raise' OR a3.action_type = 'all-in')
+					AND a3.sequence_num < a2.sequence_num
+			  );
+			
+			UPDATE players SET three_bet = IF(raise_opps>0, ROUND((three_bets*100)/raise_opps, 2), 0)
+			WHERE player_id = NEW.player_id;
+		END IF;
+	END");
 
 	// 8.6 Триггер для WTSD
 	$pdo->exec("CREATE TRIGGER update_wtsd AFTER INSERT ON actions FOR EACH ROW
