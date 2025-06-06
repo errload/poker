@@ -198,24 +198,24 @@ try {
 
 	// 8.4 Триггер для PFR
 	$pdo->exec("CREATE TRIGGER update_pfr AFTER INSERT ON actions FOR EACH ROW
-    BEGIN
-        DECLARE pfr_count INT DEFAULT 0;
-        DECLARE total_hands INT DEFAULT 0;
-        
-        IF NEW.street = 'preflop' THEN
-            SELECT COUNT(DISTINCT hand_id) INTO pfr_count FROM actions 
-            WHERE player_id = NEW.player_id AND street = 'preflop' 
-            AND action_type IN ('raise','all-in');
-            
-            SELECT COUNT(DISTINCT hand_id) INTO total_hands FROM actions 
-            WHERE player_id = NEW.player_id AND street = 'preflop';
-            
-            UPDATE players SET 
-                pfr = IF(total_hands>0, ROUND((pfr_count*100)/total_hands, 2),
-                preflop_raises = pfr_count
-            WHERE player_id = NEW.player_id;
-        END IF;
-    END");
+	BEGIN
+		DECLARE pfr_count INT DEFAULT 0;
+		DECLARE total_hands INT DEFAULT 0;
+		
+		IF NEW.street = 'preflop' THEN
+			SELECT COUNT(DISTINCT hand_id) INTO pfr_count FROM actions 
+			WHERE player_id = NEW.player_id AND street = 'preflop' 
+			AND action_type IN ('raise','all-in');
+			
+			SELECT COUNT(DISTINCT hand_id) INTO total_hands FROM actions 
+			WHERE player_id = NEW.player_id AND street = 'preflop';
+			
+			UPDATE players SET 
+				pfr = IF(total_hands>0, ROUND((pfr_count*100)/total_hands, 2), 0),
+				preflop_raises = pfr_count
+			WHERE player_id = NEW.player_id;
+		END IF;
+	END");
 
 	// 8.5 Триггер для 3-bet
 	$pdo->exec("CREATE TRIGGER update_three_bet AFTER INSERT ON actions FOR EACH ROW
