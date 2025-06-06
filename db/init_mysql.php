@@ -221,7 +221,7 @@ try {
 		IF NEW.street = 'preflop' THEN
 			SELECT COUNT(DISTINCT hand_id) INTO pfr_count FROM actions 
 			WHERE player_id = NEW.player_id AND street = 'preflop' 
-			AND action_type IN ('raise','all-in');
+			AND action_type IN ('bet', 'raise','all-in');
 			
 			SELECT COUNT(DISTINCT hand_id) INTO total_hands FROM actions 
 			WHERE player_id = NEW.player_id AND street = 'preflop';
@@ -692,17 +692,21 @@ try {
 		DECLARE steal_attempts INT DEFAULT 0;
 		
 		IF NEW.is_steal = 1 THEN
-			SELECT COUNT(DISTINCT a.hand_id) INTO steal_success FROM actions a
+			-- Успешные попытки кражи: когда игрок сделал ставку/рейз и все оппоненты сфолдили
+			SELECT COUNT(DISTINCT a.hand_id) INTO steal_success 
+			FROM actions a
 			WHERE a.player_id = NEW.player_id AND a.is_steal = 1
 			AND NOT EXISTS (
 				SELECT 1 FROM actions o
 				WHERE o.hand_id = a.hand_id
 				AND o.player_id != NEW.player_id
 				AND o.street = 'preflop'
-				AND o.action_type IN ('raise','all-in')
+				AND o.action_type IN ('call', 'raise', 'all-in')
+				AND o.sequence_num > a.sequence_num
 			);
 			
-			SELECT COUNT(DISTINCT hand_id) INTO steal_attempts FROM actions
+			SELECT COUNT(DISTINCT hand_id) INTO steal_attempts 
+			FROM actions
 			WHERE player_id = NEW.player_id AND is_steal = 1;
 			
 			UPDATE players SET 

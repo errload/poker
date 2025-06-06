@@ -92,6 +92,7 @@ document
 			})
 	})
 
+// отображение игрока текущего действия
 const showCurrentPlayer = () => {
 	getCurrentPosition()
 
@@ -131,17 +132,30 @@ document
 				players: players
 			})
 
+			const radios = document.querySelectorAll('[name="position"]')
+			current_position = Array
+				.from(radios)
+				.findIndex(radio => radio.checked)
+			console.log(current_position)
+
 			actions = []
 			actions.splice(actions.length, 0, ...positions)
+			console.log(current_position)
 
 			new_position_ids = [
 				...position_ids.slice(-current_position),
 				...position_ids.slice(0, -current_position)
 			]
+			console.log(new_position_ids)
 
-			for (let i = 0; i < 8; i++) document
-				.querySelectorAll('[name="position"]')[i]
-				.dataset.id = new_position_ids[i]
+			for (let i = 0; i < 8; i++) {
+				change_position = document.querySelectorAll('[name="position"]')[i]
+				change_position.dataset.id = new_position_ids[i]
+				change_position
+					.closest('.position_wrapper')
+					.querySelector('.position_del_button')
+					.dataset.id = new_position_ids[i]
+			}
 
 			document
 				.querySelectorAll('[name="position"]')
@@ -174,6 +188,89 @@ document
 			setStreetBidCounter()
 			showCurrentPlayer()
 		})
+	})
+
+// сброс раздачи
+document
+	.querySelector('.reset')
+	.addEventListener('click', async () => {
+		if (!document.querySelectorAll('[name="position"]:checked').length) return false
+
+		let players = []
+		document
+			.querySelectorAll('[name="position"]')
+			.forEach(elem => {
+				if (elem.dataset.action === 'inactive') return
+				if (!cards_showdown.length) return
+				players.push({
+					player_id: elem.dataset.id,
+					cards: cards_showdown.shift()
+				})
+			})
+
+		await sendAjax('/4bet/api/showdown_handler.php', {
+			hand_id: hand_id,
+			players: players
+		})
+
+		let current_index = null
+		let next_index = null
+
+		const radios = document.querySelectorAll('[name="position"]')
+		actions = []
+		actions.splice(actions.length, 0, ...positions)
+
+		// смена позиции на 1
+		current_index = Array
+			.from(radios)
+			.findIndex(radio => radio.checked)
+		next_index = (current_index - 1 + radios.length) % radios.length
+		radios[next_index].checked = true
+
+		// сдвиг ID игроков на 1
+		player_ids = []
+		document
+			.querySelectorAll('[name="position"]')
+			.forEach((elem, key) => {
+				player_ids.push(elem.dataset.id)
+				elem.dataset.action = 'active'
+				elem.nextElementSibling.style.color = '#000000'
+			})
+
+		const last_position = player_ids.shift()
+		player_ids.push(last_position)
+
+		for (let i = 0; i < 8; i++) {
+			change_position = document.querySelectorAll('[name="position"]')[i]
+			change_position.dataset.id = player_ids[i]
+			change_position
+				.closest('.position_wrapper')
+				.querySelector('.position_del_button')
+				.dataset.id = player_ids[i]
+		}
+
+		// чистка борда
+		document
+			.querySelectorAll('.board_slot')
+			.forEach(elem => {
+				elem.textContent = ''
+				elem.dataset.card = ''
+				elem.classList.remove('red', 'blue', 'green', 'black')
+			})
+
+		document.querySelector('.line_result').textContent = ''
+		document.querySelector('.line_bids').textContent = ''
+		document.querySelectorAll('[name="board_stady"]')[0].checked = true
+
+		const result = await sendAjax('/4bet/api/new_hand_mysql.php', {
+			hero_position: document.querySelector('[name="position"][data-id="999999"]').value,
+			hero_stack: document.querySelector('.stack').textContent,
+			hero_cards: null
+		})
+
+		hand_id = result.hand_id
+		setStreetBidCounter()
+		showCurrentPlayer()
 	})
 
 // выбор карт
@@ -371,84 +468,6 @@ document
 				}
 			}
 		})
-	})
-
-// сброс раздачи
-document
-	.querySelector('.reset')
-	.addEventListener('click', async () => {
-		if (!document.querySelectorAll('[name="position"]:checked').length) return false
-
-		let players = []
-		document
-			.querySelectorAll('[name="position"]')
-			.forEach(elem => {
-				if (elem.dataset.action === 'inactive') return
-				if (!cards_showdown.length) return
-				players.push({
-					player_id: elem.dataset.id,
-					cards: cards_showdown.shift()
-				})
-			})
-
-		await sendAjax('/4bet/api/showdown_handler.php', {
-			hand_id: hand_id,
-			players: players
-		})
-
-		let current_index = null
-		let next_index = null
-
-		const radios = document.querySelectorAll('[name="position"]')
-		actions = []
-		actions.splice(actions.length, 0, ...positions)
-
-		// смена позиции на 1
-		current_index = Array
-			.from(radios)
-			.findIndex(radio => radio.checked)
-		next_index = (current_index - 1 + radios.length) % radios.length
-		radios[next_index].checked = true
-
-		// сдвиг ID игроков на 1
-		player_ids = []
-		document
-			.querySelectorAll('[name="position"]')
-			.forEach((elem, key) => {
-				player_ids.push(elem.dataset.id)
-				elem.dataset.action = 'active'
-				elem.nextElementSibling.style.color = '#000000'
-			})
-
-		const last_position = player_ids.shift()
-		player_ids.push(last_position)
-		for (let i = 0; i < 8; i++) {
-			bb = document.querySelectorAll('[name="position"]')[i]
-			bb.dataset.id = player_ids[i]
-		}
-
-		// чистка борда
-		document
-			.querySelectorAll('.board_slot')
-			.forEach(elem => {
-				elem.textContent = ''
-				elem.dataset.card = ''
-				elem.classList.remove('red', 'blue', 'green', 'black')
-			})
-
-		document.querySelector('.line_result').textContent = ''
-		document.querySelector('.line_bids').textContent = ''
-		document.querySelectorAll('[name="board_stady"]')[0].checked = true
-
-		const result = await sendAjax('/4bet/api/new_hand_mysql.php', {
-			hero_position: document.querySelector('[name="position"][data-id="999999"]').value,
-			hero_stack: document.querySelector('.stack').textContent,
-			hero_cards: null
-		})
-
-		hand_id = result.hand_id
-		setStreetBidCounter()
-		showCurrentPlayer()
 	})
 
 // обновление стека
