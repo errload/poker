@@ -434,26 +434,131 @@ try {
     END");
 
 	// 8.11 Триггер для cbet
-	$pdo->exec("CREATE TRIGGER update_cbet AFTER INSERT ON actions FOR EACH ROW
-    BEGIN
-        DECLARE cbet_attempts INT DEFAULT 0;
-        DECLARE cbet_success INT DEFAULT 0;
-        
-        IF NEW.is_cbet = 1 THEN
-            SELECT COUNT(DISTINCT hand_id) INTO cbet_attempts FROM actions
-            WHERE player_id = NEW.player_id AND is_cbet = 1;
-            
-            SELECT COUNT(DISTINCT a.hand_id) INTO cbet_success FROM actions a
-            JOIN actions next ON a.hand_id = next.hand_id
-            WHERE a.player_id = NEW.player_id AND a.is_cbet = 1
-            AND next.street = a.street AND next.sequence_num > a.sequence_num
-            AND next.action_type = 'fold' AND next.player_id != NEW.player_id;
-            
-            UPDATE players SET 
-                cbet = IF(cbet_attempts>0, ROUND((cbet_success*100)/cbet_attempts, 2), 0)
-            WHERE player_id = NEW.player_id;
-        END IF;
-    END");
+	$pdo->exec("CREATE TRIGGER mark_cbet_actions BEFORE INSERT ON actions FOR EACH ROW
+	BEGIN
+		-- Автоматически помечаем cbet только для бетов на флопе
+		IF NEW.street = 'flop' AND NEW.action_type = 'bet' THEN
+			-- Проверяем, был ли игрок последним агрессором префлопа
+			IF EXISTS (
+				SELECT 1 FROM actions a 
+				WHERE a.hand_id = NEW.hand_id 
+				  AND a.player_id = NEW.player_id
+				  AND a.street = 'preflop'
+				  AND a.action_type IN ('bet', 'raise', 'all-in')
+				  -- Является ли это последним агрессивным действием игрока префлопа
+				  AND NOT EXISTS (
+					  SELECT 1 FROM actions later
+					  WHERE later.hand_id = a.hand_id
+						AND later.player_id = a.player_id
+						AND later.street = 'preflop'
+						AND later.action_type IN ('bet', 'raise', 'all-in')
+						AND later.sequence_num > a.sequence_num
+				  )
+			) AND NOT EXISTS (
+				-- Проверяем, не было ли рейзов других игроков после последнего агрессивного действия нашего игрока
+				SELECT 1 FROM actions other
+				WHERE other.hand_id = NEW.hand_id
+				  AND other.player_id != NEW.player_id
+				  AND other.street = 'preflop'
+				  AND other.action_type IN ('raise', 'all-in')
+				  AND other.sequence_num > (
+					  SELECT MAX(a.sequence_num) 
+					  FROM actions a 
+					  WHERE a.hand_id = NEW.hand_id 
+						AND a.player_id = NEW.player_id
+						AND a.street = 'preflop'
+						AND a.action_type IN ('bet', 'raise', 'all-in')
+				  )
+			) THEN
+				SET NEW.is_cbet = 1;
+			ELSE
+				SET NEW.is_cbet = 0;
+			END IF;
+		END IF;
+	END");
+
+	$pdo->exec("CREATE TRIGGER update_cbet_stats AFTER INSERT ON actions FOR EACH ROW
+	BEGIN
+		DECLARE total_cbets INT DEFAULT 0;
+		DECLARE successful_cbets INT DEFAULT 0;
+		
+		-- Обновляем статистику только для cbet действий
+		IF NEW.is_cbet = 1 THEN
+			-- Общее количество cbet попыток
+			SELECT COUNT(DISTINCT hand_id) INTO total_cbets
+			FROM actions
+			WHERE player_id = NEW.player_id AND is_cbet = 1;
+			
+			-- Успешные cbet (когда следующий игрок фолдит)
+			SELECT COUNT(DISTINCT cbet_actions.hand_id) INTO successful_cbets
+			FROM actions cbet_actions
+			JOIN actions next_actions ON 
+				cbet_actions.hand_id = next_actions.hand_id AND
+				cbet_actions.street = next_actions.street AND
+				next_actions.sequence_num > cbet_actions.sequence_num
+			WHERE cbet_actions.player_id = NEW.player_id 
+			  AND cbet_actions.is_cbet = 1
+			  AND next_actions.action_type = 'fold'
+			  AND next_actions.player_id != NEW.player_id;
+			
+			-- Обновляем статистику игрока
+			UPDATE players
+			SET 
+				cbet = IF(total_cbets > 0, ROUND((successful_cbets * 100) / total_cbets, 2), 0),
+				last_seen = NOW()
+			WHERE player_id = NEW.player_id;
+		END IF;
+	END");
+
+	$pdo->exec("CREATE PROCEDURE recalculate_all_cbet_stats()
+	BEGIN
+		DECLARE done INT DEFAULT FALSE;
+		DECLARE player_id_var VARCHAR(36);
+		DECLARE player_cursor CURSOR FOR SELECT player_id FROM players;
+		DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+		
+		OPEN player_cursor;
+		
+		read_loop: LOOP
+			FETCH player_cursor INTO player_id_var;
+			IF done THEN
+				LEAVE read_loop;
+			END IF;
+			
+			CALL update_player_cbet_stats(player_id_var);
+		END LOOP;
+		
+		CLOSE player_cursor;
+	END");
+
+	$pdo->exec("CREATE PROCEDURE update_player_cbet_stats(IN p_player_id VARCHAR(36))
+	BEGIN
+		DECLARE total_cbets INT DEFAULT 0;
+		DECLARE successful_cbets INT DEFAULT 0;
+		
+		-- Общее количество cbet попыток
+		SELECT COUNT(DISTINCT hand_id) INTO total_cbets
+		FROM actions
+		WHERE player_id = p_player_id AND is_cbet = 1;
+		
+		-- Успешные cbet
+		SELECT COUNT(DISTINCT cbet_actions.hand_id) INTO successful_cbets
+		FROM actions cbet_actions
+		JOIN actions next_actions ON 
+			cbet_actions.hand_id = next_actions.hand_id AND
+			cbet_actions.street = next_actions.street AND
+			next_actions.sequence_num > cbet_actions.sequence_num
+		WHERE cbet_actions.player_id = p_player_id 
+		  AND cbet_actions.is_cbet = 1
+		  AND next_actions.action_type = 'fold'
+		  AND next_actions.player_id != p_player_id;
+		
+		-- Обновляем статистику игрока
+		UPDATE players
+		SET 
+			cbet = IF(total_cbets > 0, ROUND((successful_cbets * 100) / total_cbets, 2), 0)
+		WHERE player_id = p_player_id;
+	END");
 
 	// 8.12 Триггер для fold_to_cbet
 	$pdo->exec("CREATE TRIGGER update_fold_to_cbet AFTER INSERT ON actions FOR EACH ROW
