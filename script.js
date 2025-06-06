@@ -151,7 +151,6 @@ document
 				...position_ids.slice(-current_position),
 				...position_ids.slice(0, -current_position)
 			]
-			console.log(new_position_ids)
 
 			for (let i = 0; i < 8; i++) {
 				change_position = document.querySelectorAll('[name="position"]')[i]

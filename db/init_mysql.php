@@ -717,12 +717,51 @@ try {
 
 	// 8.15 Триггер для aggressive_actions
 	$pdo->exec("CREATE TRIGGER update_aggressive_actions AFTER INSERT ON actions FOR EACH ROW
-    BEGIN
-        IF NEW.action_type IN ('bet','raise','all-in') THEN
-            UPDATE players SET aggressive_actions = IFNULL(aggressive_actions, 0) + 1
-            WHERE player_id = NEW.player_id;
-        END IF;
-    END");
+	BEGIN
+		DECLARE is_blind_action BOOLEAN DEFAULT FALSE;
+		DECLARE is_forced_action BOOLEAN DEFAULT FALSE;
+		
+		-- Проверяем, является ли действие обязательным (блайнды)
+		IF NEW.street = 'preflop' AND NEW.position IN ('SB', 'BB') AND 
+		   (NEW.action_type = 'bet' OR (NEW.action_type = 'check' AND NEW.position = 'BB')) THEN
+			SET is_blind_action = TRUE;
+		END IF;
+		
+		-- Проверяем, является ли действие вынужденным
+		IF NEW.is_voluntary = FALSE THEN
+			SET is_forced_action = TRUE;
+		END IF;
+		
+		-- Учитываем только добровольные агрессивные действия, не являющиеся обязательными блайндами
+		IF NEW.action_type IN ('bet','raise','all-in') AND 
+		   NOT is_blind_action AND 
+		   NOT is_forced_action THEN
+			
+			-- Обновляем агрессивные действия с учетом улицы
+			CASE NEW.street
+				WHEN 'preflop' THEN
+					UPDATE players SET 
+						aggressive_actions = IFNULL(aggressive_actions, 0) + 1,
+						preflop_aggression = IFNULL(preflop_aggression, 0) + 1
+					WHERE player_id = NEW.player_id;
+				WHEN 'flop' THEN
+					UPDATE players SET 
+						aggressive_actions = IFNULL(aggressive_actions, 0) + 1,
+						flop_aggression = IFNULL(flop_aggression, 0) + 1
+					WHERE player_id = NEW.player_id;
+				WHEN 'turn' THEN
+					UPDATE players SET 
+						aggressive_actions = IFNULL(aggressive_actions, 0) + 1,
+						turn_aggression = IFNULL(turn_aggression, 0) + 1
+					WHERE player_id = NEW.player_id;
+				WHEN 'river' THEN
+					UPDATE players SET 
+						aggressive_actions = IFNULL(aggressive_actions, 0) + 1,
+						river_aggression = IFNULL(river_aggression, 0) + 1
+					WHERE player_id = NEW.player_id;
+			END CASE;
+		END IF;
+	END");
 
 	// 8.16 Триггер для passive_actions
 	$pdo->exec("CREATE TRIGGER update_passive_actions AFTER INSERT ON actions FOR EACH ROW
