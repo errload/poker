@@ -250,8 +250,6 @@ try {
         $analysisData
     ";
 
-	die(print_r($content));
-
 	$api_key = 'sk-JBDhoWZZwZSn8q2xmqmi9zETz12StFzC';
 	$url = 'https://api.proxyapi.ru/openai/v1/chat/completions';
 	$headers = ['Content-Type: application/json', 'Authorization: Bearer ' . $api_key];
