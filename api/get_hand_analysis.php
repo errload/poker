@@ -259,7 +259,7 @@ try {
 		- Рекомендуй рейзы 2.2-2.5x против лузовых\n
 		- 3bet 8-12BB против steal-попыток\n
 		- Размер c-bet 50-75% банка\n
-		Формат ответа: (действие: фолд/чек/колл/рейз X BB) | (Обоснование: 3-5 слов)\n
+		Формат ответа: (действие: фолд/чек/колл/рейз X BB) | (Обоснование, буквально в 3-5 словах)\n
 		Примеры правильных рекомендаций:\n
 		Рейз 2.5BB | Давление на лузового UTG\n
 		Фолд | Слабый KJo против 3bet тайта\n
@@ -276,7 +276,7 @@ try {
 	curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 	curl_setopt($ch, CURLOPT_POST, true);
 	curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-		'model' => 'gpt-4.1',
+		'model' => 'gpt-4.1-mini',
 		'messages' => [[ 'role' => 'user', 'content' => $content ]],
 		'temperature' => 0.3
 	]));
