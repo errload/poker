@@ -110,16 +110,16 @@ try {
 		],
 		'plrs' => [],
 		'pots' => [
-			'pf' => 0, // preflop
+			'pr' => 0, // preflop
 			'fl' => 0, // flop
 			'tu' => 0, // turn
-			'rv' => 0  // river
+			'ri' => 0  // river
 		],
 		'actions' => [
-			'pf' => [], // preflop
+			'pr' => [], // preflop
 			'fl' => [], // flop
 			'tu' => [], // turn
-			'rv' => []  // river
+			'ri' => []  // river
 		],
 		'sd' => [] // showdown
 	];
