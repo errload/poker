@@ -12,7 +12,9 @@ try {
 	$input = [
 		'hand_id' => 4,
 		'current_street' => 'preflop',
-		'hero_position' => 'MP'
+		'hero_position' => 'MP',
+		'hero_id' => '999999',
+		'hero_nickname' => 'Player999999'
 	];
 
 	$required = ['hand_id', 'current_street', 'hero_position'];
@@ -51,12 +53,13 @@ try {
 
 	// 2. Получение информации о шоудауне
 	$showdownStmt = $pdo->prepare("
-        SELECT s.player_id, p.nickname, s.cards 
-        FROM showdown s
-        JOIN players p ON s.player_id = p.player_id
-        WHERE s.hand_id = :hand_id
-    ");
-	$showdownStmt->execute([':hand_id' => $input['hand_id']]);
+		SELECT s.player_id, p.nickname, s.hand_id, s.cards 
+		FROM showdown s
+		JOIN players p ON s.player_id = p.player_id
+		ORDER BY s.created_at DESC
+		LIMIT 1000 -- можно ограничить количество записей для производительности
+	");
+	$showdownStmt->execute();
 	$showdownInfo = $showdownStmt->fetchAll();
 
 	// 3. Получение игроков в текущей раздаче
@@ -122,8 +125,8 @@ try {
 		'current_street' => $input['current_street'],
 		'board' => $handInfo['board'] ?? null,
 		'hero' => [
-			'id' => null,
-			'nickname' => null,
+			'id' => $input['hero_id'] ?? null, // Используем переданный ID героя
+			'nickname' => $input['hero_nickname'] ?? null, // Используем переданный никнейм
 			'cards' => $handInfo['hero_cards'],
 			'position' => $input['hero_position'],
 			'stack' => $handInfo['hero_stack']
@@ -144,22 +147,46 @@ try {
 		'showdown' => []
 	];
 
-	// Находим ID и никнейм героя по позиции
-	foreach ($currentHandPlayers as $player) {
-		if ($player['position'] === $input['hero_position']) {
-			$response['hero']['id'] = $player['player_id'];
-			$response['hero']['nickname'] = $player['nickname'];
-			break;
+	// Получаем ID и никнейм героя из текущей раздачи (если не были переданы)
+	if (empty($response['hero']['id'])) {
+		foreach ($currentHandPlayers as $player) {
+			if ($player['position'] === $input['hero_position']) {
+				$response['hero']['id'] = $player['player_id'];
+				$response['hero']['nickname'] = $player['nickname'];
+				break;
+			}
 		}
 	}
 
-	// Добавляем игроков в ответ (исключая героя)
-	foreach ($allPlayers as $player) {
-		// Пропускаем героя, если он вдруг попал в выборку
-		if ($player['player_id'] === $response['hero']['id']) {
-			continue;
-		}
+	// Запрос для получения всех игроков (исключая героя по ID)
+	$allPlayersStmt = $pdo->prepare("
+		SELECT player_id, nickname, 
+			   vpip, pfr, af, afq, three_bet, wtsd, hands_played, showdowns,
+			   preflop_raises, postflop_raises, check_raises, cbet, fold_to_cbet,
+			   aggressive_actions, passive_actions, steal_attempt, steal_success,
+			   postflop_raise_pct, check_raise_pct,
+			   preflop_aggression, flop_aggression, turn_aggression, river_aggression,
+			   last_seen, created_at
+		FROM players
+		WHERE player_id != :hero_id
+		ORDER BY last_seen DESC
+	");
+	$allPlayersStmt->execute([
+		':hero_id' => $response['hero']['id'] // Фильтруем по ID героя
+	]);
+	$allPlayers = $allPlayersStmt->fetchAll();
 
+	// Получаем список игроков, которые уже совершили действия в текущей раздаче
+	$actedPlayersStmt = $pdo->prepare("
+		SELECT DISTINCT player_id 
+		FROM actions 
+		WHERE hand_id = :hand_id
+	");
+	$actedPlayersStmt->execute([':hand_id' => $input['hand_id']]);
+	$actedPlayers = $actedPlayersStmt->fetchAll(PDO::FETCH_COLUMN);
+
+	// Добавляем игроков в ответ (уже без героя)
+	foreach ($allPlayers as $player) {
 		$playerData = [
 			'id' => $player['player_id'],
 			'nickname' => $player['nickname'],
@@ -187,14 +214,16 @@ try {
 				'river_aggression' => $player['river_aggression']
 			],
 			'in_current_hand' => false,
+			'has_acted' => false, // По умолчанию игрок еще не действовал
 			'position' => null
 		];
 
-		// Проверяем, участвует ли игрок в текущей раздаче
+		// Проверяем участие в текущей раздаче
 		foreach ($currentHandPlayers as $handPlayer) {
 			if ($handPlayer['player_id'] === $player['player_id']) {
 				$playerData['in_current_hand'] = true;
 				$playerData['position'] = $handPlayer['position'];
+				$playerData['has_acted'] = in_array($player['player_id'], $actedPlayers);
 				break;
 			}
 		}
@@ -207,7 +236,8 @@ try {
 		$response['showdown'][] = [
 			'player_id' => $player['player_id'],
 			'nickname' => $player['nickname'],
-			'cards' => $player['cards'] // Добавляем карты в шоудаун
+			'hand_id' => $player['hand_id'],
+			'cards' => $player['cards']
 		];
 	}
 
