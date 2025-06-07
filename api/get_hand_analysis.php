@@ -14,7 +14,8 @@ try {
 //		'current_street' => 'preflop',
 //		'hero_position' => 'MP',
 //		'hero_id' => '999999',
-//		'hero_nickname' => 'Player999999'
+//		'hero_nickname' => 'Player999999',
+//		'stady' => 'ранняя'
 //	];
 
 	$required = ['hand_id', 'current_street', 'hero_position'];
@@ -236,14 +237,18 @@ try {
 
 	// Формируем запрос к AI
 	$analysisData = json_encode($response, JSON_UNESCAPED_UNICODE);
+	$stady = $input['stady'];
 	$content = "
         Ты — профессиональный покерный ИИ-ассистент с опытом в Texas Hold'em турнире Bounty 8 max.
         Твоя задача — анализировать текущую раздачу и давать оптимальные рекомендации для героя.
         Оцени силу руки героя по текущей доске и позиции.
         Анализируй действия оппонентов, размер банка и стеков, тенденции улицы.
         Отвечай максимально коротко: (чек, колл, рейз X BB) | Краткое описание (3-4 слова)
+        Стадия турнира - $stady.
         $analysisData
     ";
+
+	die(print_r($content));
 
 	$api_key = 'sk-JBDhoWZZwZSn8q2xmqmi9zETz12StFzC';
 	$url = 'https://api.proxyapi.ru/openai/v1/chat/completions';
