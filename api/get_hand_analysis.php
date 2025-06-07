@@ -30,7 +30,7 @@ try {
 		]
 	);
 
-	// Get hand information (only existing fields)
+	// Get hand information
 	$handStmt = $pdo->prepare("
         SELECT 
             hero_position, 
@@ -45,372 +45,140 @@ try {
 	$handData = $handStmt->fetch();
 	if (!$handData) throw new Exception("Hand not found");
 
-	// Get all players in the hand
+	// Get hero player ID
+	$heroStmt = $pdo->prepare("
+        SELECT a.player_id, p.nickname 
+        FROM actions a
+        JOIN players p ON a.player_id = p.player_id
+        WHERE a.hand_id = ? AND a.position = ?
+        ORDER BY a.sequence_num LIMIT 1
+    ");
+	$heroStmt->execute([$input['hand_id'], $input['hero_position']]);
+	$heroData = $heroStmt->fetch();
+	$heroPlayerId = $heroData['player_id'] ?? null;
+	$heroNickname = $heroData['nickname'] ?? 'Hero';
+
+	// Get all players in the hand with comprehensive stats
 	$playersStmt = $pdo->prepare("
         SELECT 
             p.player_id, 
             p.nickname,
             a.position,
-            (SELECT amount FROM actions WHERE hand_id = ? AND player_id = p.player_id ORDER BY sequence_num LIMIT 1) as initial_stack
+            p.vpip,
+            p.pfr,
+            p.af,
+            p.afq,
+            p.three_bet,
+            p.wtsd,
+            p.hands_played,
+            p.cbet,
+            p.fold_to_cbet,
+            p.steal_attempt,
+            p.steal_success,
+            
+            -- Current hand status
+            (SELECT a2.action_type FROM actions a2 
+             WHERE a2.hand_id = ? AND a2.player_id = p.player_id 
+             ORDER BY a2.sequence_num DESC LIMIT 1) as last_action,
+            
+            EXISTS (SELECT 1 FROM actions a2 WHERE a2.hand_id = ? AND a2.player_id = p.player_id AND a2.action_type = 'fold') as has_folded,
+            EXISTS (SELECT 1 FROM actions a2 WHERE a2.hand_id = ? AND a2.player_id = p.player_id AND a2.street = ?) as has_acted_on_street
         FROM players p
         JOIN actions a ON p.player_id = a.player_id AND a.hand_id = ?
-        GROUP BY p.player_id, p.nickname, a.position
+        WHERE EXISTS (
+            SELECT 1 FROM actions a2 
+            WHERE a2.hand_id = ? AND a2.player_id = p.player_id
+        )
+        ORDER BY FIELD(a.position, 'SB', 'BB', 'UTG', 'UTG+1', 'MP', 'HJ', 'CO', 'BTN')
     ");
-	$playersStmt->execute([$input['hand_id'], $input['hand_id']]);
-	$allPlayersInHand = $playersStmt->fetchAll();
-
-	// Get fold status and current stack for each player
-	$playerStatus = [];
-	foreach ($allPlayersInHand as $player) {
-		$foldStmt = $pdo->prepare("
-            SELECT 1 FROM actions 
-            WHERE hand_id = ? AND player_id = ? AND action_type = 'fold'
-            LIMIT 1
-        ");
-		$foldStmt->execute([$input['hand_id'], $player['player_id']]);
-		$folded = $foldStmt->fetch() ? true : false;
-
-		// Calculate current stack
-		$betStmt = $pdo->prepare("
-            SELECT SUM(amount) 
-            FROM actions 
-            WHERE hand_id = ? AND player_id = ?
-        ");
-		$betStmt->execute([$input['hand_id'], $player['player_id']]);
-		$totalBet = $betStmt->fetchColumn() ?? 0;
-		$currentStack = $player['initial_stack'] - $totalBet;
-
-		$playerStatus[$player['player_id']] = [
-			'folded' => $folded,
-			'current_stack' => $currentStack
-		];
-	}
-
-	// Get hero player ID and total bet
-	$heroPlayerId = null;
-	$heroTotalBet = 0;
-	$heroCurrentStack = $handData['hero_stack'];
-
-	$heroStmt = $pdo->prepare("
-		SELECT a.player_id, p.nickname 
-		FROM actions a
-		JOIN players p ON a.player_id = p.player_id
-		WHERE a.hand_id = ? AND a.position = ?
-		ORDER BY a.sequence_num LIMIT 1
-	");
-	$heroStmt->execute([$input['hand_id'], $input['hero_position']]);
-	$heroData = $heroStmt->fetch();
-
-	$heroPlayerId = $heroData['player_id'] ?? null;
-	$heroNickname = $heroData['nickname'] ?? 'Hero';
-	$heroPlayerId = $heroStmt->fetchColumn();
-
-	if ($heroPlayerId) {
-		$betStmt = $pdo->prepare("
-            SELECT SUM(amount) 
-            FROM actions 
-            WHERE hand_id = ? AND player_id = ?
-        ");
-		$betStmt->execute([$input['hand_id'], $heroPlayerId]);
-		$heroTotalBet = $betStmt->fetchColumn() ?? 0;
-		$heroCurrentStack = $handData['hero_stack'] - $heroTotalBet;
-	}
-
-	// Get recent hand IDs (last 50 completed hands)
-	$recentHandsStmt = $pdo->prepare("
-        SELECT hand_id FROM hands 
-        WHERE is_completed = 1 
-        ORDER BY hand_id DESC 
-        LIMIT 50
-    ");
-	$recentHandsStmt->execute();
-	$recentHandIds = $recentHandsStmt->fetchAll(PDO::FETCH_COLUMN, 0);
-	$recentHandsPlaceholders = implode(',', array_fill(0, count($recentHandIds), '?'));
-
-	// Get all players in the current hand with comprehensive stats
-	$playersStmt = $pdo->prepare("
-		SELECT 
-			p.player_id, 
-			p.nickname,
-			a.position,
-			p.vpip,
-			p.pfr,
-			p.af,
-			p.afq,
-			p.three_bet,
-			p.wtsd,
-			p.hands_played,
-			p.cbet,
-			p.fold_to_cbet,
-			p.steal_attempt,
-			p.steal_success,
-			
-			-- Current hand status
-			(SELECT a2.action_type FROM actions a2 
-			 WHERE a2.hand_id = ? AND a2.player_id = p.player_id 
-			 ORDER BY a2.sequence_num DESC LIMIT 1) as last_action,
-			
-			EXISTS (SELECT 1 FROM actions a2 WHERE a2.hand_id = ? AND a2.player_id = p.player_id AND a2.action_type = 'fold') as has_folded,
-			EXISTS (SELECT 1 FROM actions a2 WHERE a2.hand_id = ? AND a2.player_id = p.player_id AND a2.street = ?) as has_acted_on_street,
-			
-			-- Recent player flag
-			EXISTS (SELECT 1 FROM actions a2 WHERE a2.player_id = p.player_id AND a2.hand_id IN ($recentHandsPlaceholders)) as is_recent_player
-		FROM players p
-		JOIN actions a ON p.player_id = a.player_id AND a.hand_id = ?
-		WHERE EXISTS (
-			SELECT 1 FROM actions a2 
-			WHERE a2.hand_id = ? AND a2.player_id = p.player_id
-		)
-		ORDER BY FIELD(a.position, 'SB', 'BB', 'UTG', 'UTG+1', 'MP', 'HJ', 'CO', 'BTN')
-	");
-
-	$params = array_merge(
-		[$input['hand_id'], $input['hand_id'], $input['hand_id'], $input['current_street']],
-		$recentHandIds,
-		[$input['hand_id'], $input['hand_id']]
-	);
-
-	$playersStmt->execute($params);
-	$players = $playersStmt->fetchAll();
-
-	// Enhance player data with calculated stats and status
-	foreach ($players as &$player) {
-		$player['is_active'] = !$player['has_folded'];
-		$player['current_stack'] = $playerStatus[$player['player_id']]['current_stack'] ?? 0;
-	}
-	unset($player);
-
-	// Get remaining players to act (only active players)
-	$positionsOrder = ['SB', 'BB', 'UTG', 'UTG+1', 'MP', 'HJ', 'CO', 'BTN'];
-	// Сначала получаем порядок позиций для этого конкретного стола
-	$positionsOrder = [];
-
-	// Получаем порядок позиций для этой раздачи
-	$positionsStmt = $pdo->prepare("
-    SELECT position, MIN(sequence_num) as min_seq
-    FROM actions 
-    WHERE hand_id = ?
-    GROUP BY position
-    ORDER BY min_seq
-");
-	$positionsStmt->execute([$input['hand_id']]);
-	$orderedPositions = $positionsStmt->fetchAll();
-	$allPositionsInHand = array_column($orderedPositions, 'position');
-
-// Получаем всех игроков в раздаче с их действиями на текущей улице
-	$playersStmt = $pdo->prepare("
-    SELECT 
-        p.player_id,
-        p.nickname,
-        a.position,
-        EXISTS (
-            SELECT 1 FROM actions 
-            WHERE hand_id = ? 
-            AND player_id = p.player_id 
-            AND street = ?
-            AND action_type != 'fold'
-        ) as has_acted,
-        EXISTS (
-            SELECT 1 FROM actions 
-            WHERE hand_id = ? 
-            AND player_id = p.player_id 
-            AND action_type = 'fold'
-        ) as has_folded
-    FROM players p
-    JOIN actions a ON p.player_id = a.player_id
-    WHERE a.hand_id = ?
-    GROUP BY p.player_id, p.nickname, a.position
-");
 	$playersStmt->execute([
+		$input['hand_id'],
+		$input['hand_id'],
 		$input['hand_id'],
 		$input['current_street'],
 		$input['hand_id'],
 		$input['hand_id']
 	]);
-	$allPlayers = $playersStmt->fetchAll();
+	$players = $playersStmt->fetchAll();
 
-	// 1. Получаем всех игроков, которые УЖЕ сделали ход на текущей улице
-	$actedPlayersStmt = $pdo->prepare("
-    SELECT DISTINCT 
-        p.player_id, 
-        p.nickname, 
-        a.position, 
-        p.vpip, 
-        p.pfr, 
-        p.af, 
-        p.afq, 
-        p.three_bet,
-        1 as has_acted_on_street  -- Явно указываем что они сделали ход
-    FROM players p
-    JOIN actions a ON p.player_id = a.player_id
-    WHERE a.hand_id = ? 
-    AND a.street = ?
-    AND a.action_type != 'fold'
-    AND a.position != ?  -- Исключаем героя
-");
-	$actedPlayersStmt->execute([$input['hand_id'], $input['current_street'], $input['hero_position']]);
-	$actedPlayers = $actedPlayersStmt->fetchAll();
+	// Get positions order for this hand
+	$positionsStmt = $pdo->prepare("
+        SELECT position, MIN(sequence_num) as min_seq
+        FROM actions 
+        WHERE hand_id = ?
+        GROUP BY position
+        ORDER BY min_seq
+    ");
+	$positionsStmt->execute([$input['hand_id']]);
+	$orderedPositions = $positionsStmt->fetchAll();
+	$allPositionsInHand = array_column($orderedPositions, 'position');
 
-// 2. Получаем всех игроков, которые ЕЩЕ НЕ сделали ход
-	$pendingPlayersStmt = $pdo->prepare("
-    SELECT DISTINCT 
-        p.player_id, 
-        p.nickname, 
-        a.position, 
-        p.vpip, 
-        p.pfr, 
-        p.af, 
-        p.afq, 
-        p.three_bet,
-        0 as has_acted_on_street  -- Явно указываем что они НЕ сделали ход
-    FROM players p
-    JOIN actions a ON p.player_id = a.player_id
-    WHERE a.hand_id = ?
-    AND a.position != ?  -- Исключаем героя
-    AND NOT EXISTS (
-        SELECT 1 FROM actions a2 
-        WHERE a2.hand_id = a.hand_id 
-        AND a2.player_id = p.player_id 
-        AND a2.street = ?
-        AND a2.action_type != 'fold'
-    )
-");
-	$pendingPlayersStmt->execute([$input['hand_id'], $input['hero_position'], $input['current_street']]);
-	$pendingPlayers = $pendingPlayersStmt->fetchAll();
+	// Calculate current stack for each player
+	foreach ($players as &$player) {
+		$stackStmt = $pdo->prepare("
+            SELECT 
+                (SELECT amount FROM actions WHERE hand_id = ? AND player_id = ? ORDER BY sequence_num LIMIT 1) as initial_stack,
+                (SELECT SUM(amount) FROM actions WHERE hand_id = ? AND player_id = ?) as total_bet
+        ");
+		$stackStmt->execute([$input['hand_id'], $player['player_id'], $input['hand_id'], $player['player_id']]);
+		$stackData = $stackStmt->fetch();
 
-// 3. Разделяем на тех, кто ДО и ПОСЛЕ героя
-	$positionsOrder = ['SB', 'BB', 'UTG', 'UTG+1', 'MP', 'HJ', 'CO', 'BTN']; // Стандартный порядок для 6-max
-	$heroIndex = array_search($input['hero_position'], $positionsOrder);
-
-	$playersBeforeHero = [];
-	$playersAfterHero = [];
-
-// Обрабатываем игроков, которые уже сделали ход
-	foreach ($actedPlayers as $player) {
-		$playerIndex = array_search($player['position'], $positionsOrder);
-		if ($playerIndex < $heroIndex) {
-			$playersBeforeHero[] = [
-				'player_id' => $player['player_id'],
-				'nickname' => $player['nickname'],
-				'position' => $player['position'],
-				'has_acted' => true, // Все эти игроки уже сделали ход
-				'has_folded' => false, // Пока не знаем, обновим ниже
-				'is_active' => true,
-				'has_acted_on_street' => true // Добавляем недостающий ключ
-			];
-		} else {
-			$playersAfterHero[] = $player;
-		}
-	}
-
-// Обрабатываем игроков, которые еще не сделали ход
-	foreach ($pendingPlayers as $player) {
-		$playerIndex = array_search($player['position'], $positionsOrder);
-		if ($playerIndex < $heroIndex) {
-			$playersBeforeHero[] = [
-				'player_id' => $player['player_id'],
-				'nickname' => $player['nickname'],
-				'position' => $player['position'],
-				'has_acted' => false,
-				'has_folded' => false,
-				'is_active' => true,
-				'has_acted_on_street' => false // Добавляем недостающий ключ
-			];
-		} else {
-			$playersAfterHero[] = $player;
-		}
-	}
-
-// 4. Добавляем статус folded
-	$foldCheckStmt = $pdo->prepare("
-    SELECT 1 FROM actions 
-    WHERE hand_id = ? AND player_id = ? AND action_type = 'fold'
-    LIMIT 1
-");
-
-// Обновляем статусы для playersBeforeHero
-	foreach ($playersBeforeHero as &$player) {
-		$foldCheckStmt->execute([$input['hand_id'], $player['player_id']]);
-		$player['has_folded'] = $foldCheckStmt->fetch() ? true : false;
+		$player['current_stack'] = ($stackData['initial_stack'] ?? 0) - ($stackData['total_bet'] ?? 0);
 		$player['is_active'] = !$player['has_folded'];
-		$player['has_acted'] = true;
-	}
-
-// Обновляем статусы для playersAfterHero
-	foreach ($playersAfterHero as &$player) {
-		$foldCheckStmt->execute([$input['hand_id'], $player['player_id']]);
-		$player['has_folded'] = $foldCheckStmt->fetch() ? true : false;
-		$player['is_active'] = !$player['has_folded'];
-		$player['has_acted'] = false;
-	}
-	unset($player); // Важно для безопасности ссылок
-
-// Разделяем игроков
-	$playersBeforeHero = [];
-	$playersAfterHero = [];
-
-	// В разделе "3. Разделяем на тех, кто ДО и ПОСЛЕ героя"
-	foreach ($allPlayers as $player) {
-		if ($player['position'] === $input['hero_position']) {
-			continue;
-		}
-
-		$playerPosIndex = array_search($player['position'], $positionsOrder);
-		$heroPosIndex = array_search($input['hero_position'], $positionsOrder);
-
-		if ($playerPosIndex === false || $heroPosIndex === false) {
-			throw new Exception("Invalid position: player={$player['position']}, hero={$input['hero_position']}");
-		}
-
-		if ($playerPosIndex < $heroPosIndex) {
-			$playersBeforeHero[] = [
-				'player_id' => $player['player_id'],
-				'nickname' => $player['nickname'],
-				'position' => $player['position'],
-				'has_acted' => $player['has_acted'] ?? false,
-				'has_folded' => $player['has_folded'] ?? false,
-				'is_active' => !($player['has_folded'] ?? false),
-				'has_acted_on_street' => $player['has_acted_on_street'] ?? false // Добавляем поле
-			];
-		} else {
-			$playersAfterHero[] = [
-				'player_id' => $player['player_id'],
-				'nickname' => $player['nickname'],
-				'position' => $player['position'],
-				'has_folded' => $player['has_folded'] ?? false,
-				'is_active' => !($player['has_folded'] ?? false),
-				'has_acted_on_street' => $player['has_acted_on_street'] ?? false // Добавляем поле
-			];
-		}
-	}
-
-	// 4. Добавляем статус folded для игроков после героя
-	foreach ($playersAfterHero as &$player) {
-		$foldStmt->execute([$input['hand_id'], $player['player_id']]);
-		$player['has_folded'] = $foldStmt->fetch() ? true : false;
-		$player['is_active'] = !$player['has_folded'];
-		$player['has_acted_on_street'] = $player['has_acted_on_street'] ?? false; // Добавляем, если отсутствует
 	}
 	unset($player);
 
-	$tablePositions = $positionsStmt->fetchAll(PDO::FETCH_COLUMN);
-	// Затем фильтруем игроков
-	$remainingPlayers = array_filter($players, function($p) use ($input, $tablePositions) {
-		// Игрок активен, ещё не действовал на этой улице и не герой
-		$isRemaining = $p['is_active'] && !$p['has_acted_on_street'] && $p['position'] != $input['hero_position'];
+	// Get hero total bet
+	$heroTotalBet = 0;
+	if ($heroPlayerId) {
+		$betStmt = $pdo->prepare("SELECT SUM(amount) FROM actions WHERE hand_id = ? AND player_id = ?");
+		$betStmt->execute([$input['hand_id'], $heroPlayerId]);
+		$heroTotalBet = $betStmt->fetchColumn() ?? 0;
+	}
+	$heroCurrentStack = $handData['hero_stack'] - $heroTotalBet;
 
-		// Дополнительно проверяем, что позиция игрока после героя
-		if ($isRemaining) {
-			$heroIndex = array_search($input['hero_position'], $tablePositions);
-			$playerIndex = array_search($p['position'], $tablePositions);
-			return $playerIndex > $heroIndex;
+	// Split players into before and after hero
+	$heroIndex = array_search($input['hero_position'], $allPositionsInHand);
+	$playersBeforeHero = [];
+	$playersAfterHero = [];
+
+	foreach ($players as $player) {
+		if ($player['position'] === $input['hero_position']) continue;
+
+		$playerIndex = array_search($player['position'], $allPositionsInHand);
+		if ($playerIndex === false) continue;
+
+		$playerData = [
+			'player_id' => $player['player_id'],
+			'nickname' => $player['nickname'],
+			'position' => $player['position'],
+			'has_acted' => $player['has_acted_on_street'],
+			'has_folded' => $player['has_folded'],
+			'is_active' => $player['is_active'],
+			'current_stack' => $player['current_stack'],
+			'stats' => [
+				'vpip' => $player['vpip'],
+				'pfr' => $player['pfr'],
+				'af' => $player['af'],
+				'afq' => $player['afq'],
+				'three_bet' => $player['three_bet']
+			]
+		];
+
+		if ($playerIndex < $heroIndex) {
+			$playersBeforeHero[] = $playerData;
+		} else {
+			$playersAfterHero[] = $playerData;
 		}
+	}
 
-		return false;
+	// Get remaining players to act (only active players after hero)
+	$remainingPlayers = array_filter($playersAfterHero, function($p) {
+		return $p['is_active'] && !$p['has_acted'];
 	});
 
-	usort($remainingPlayers, function($a, $b) use ($positionsOrder) {
-		return array_search($a['position'], $positionsOrder) - array_search($b['position'], $positionsOrder);
+	usort($remainingPlayers, function($a, $b) use ($allPositionsInHand) {
+		return array_search($a['position'], $allPositionsInHand) - array_search($b['position'], $allPositionsInHand);
 	});
 
 	// Get action history for the hand
@@ -458,57 +226,71 @@ try {
 		$streetActions[$action['street']][] = $actionHistory[count($actionHistory)-1];
 	}
 
-	// Get hero reactions data
-	$heroReactionsStmt = $pdo->prepare("
-        SELECT 
-            a.player_id,
-            p.nickname,
-            a.action_type,
-            a.street,
-            COUNT(*) as action_count,
-            SUM(a.is_aggressive) as aggressive_count
-        FROM actions a
-        JOIN players p ON a.player_id = p.player_id
-        WHERE a.hand_id IN ($recentHandsPlaceholders)
-        AND EXISTS (
-            SELECT 1 FROM actions a2 
-            WHERE a2.hand_id = a.hand_id 
-            AND a2.player_id = ?
-            AND a2.sequence_num < a.sequence_num
-        )
-        GROUP BY a.player_id, a.action_type, a.street
+	// Get recent hand IDs (last 50 completed hands)
+	$recentHandsStmt = $pdo->prepare("
+        SELECT hand_id FROM hands 
+        WHERE is_completed = 1 
+        ORDER BY hand_id DESC 
+        LIMIT 50
     ");
-	$heroReactionsStmt->execute(array_merge($recentHandIds, [$heroPlayerId]));
-	$heroReactions = $heroReactionsStmt->fetchAll();
+	$recentHandsStmt->execute();
+	$recentHandIds = $recentHandsStmt->fetchAll(PDO::FETCH_COLUMN, 0);
 
+	// Get hero reactions data if we have recent hands
 	$reactionAnalysis = [];
-	foreach ($heroReactions as $reaction) {
-		if (!isset($reactionAnalysis[$reaction['player_id']])) {
-			$reactionAnalysis[$reaction['player_id']] = [
-				'nickname' => $reaction['nickname'],
-				'total_actions' => 0,
-				'aggressive_actions' => 0,
-				'action_breakdown' => [],
-				'street_breakdown' => []
-			];
-		}
+	if (!empty($recentHandIds) && $heroPlayerId) {
+		$recentHandsPlaceholders = implode(',', array_fill(0, count($recentHandIds), '?'));
 
-		$reactionAnalysis[$reaction['player_id']]['total_actions'] += $reaction['action_count'];
-		$reactionAnalysis[$reaction['player_id']]['aggressive_actions'] += $reaction['aggressive_count'];
+		$heroReactionsStmt = $pdo->prepare("
+            SELECT 
+                a.player_id,
+                p.nickname,
+                a.action_type,
+                a.street,
+                COUNT(*) as action_count,
+                SUM(a.is_aggressive) as aggressive_count
+            FROM actions a
+            JOIN players p ON a.player_id = p.player_id
+            WHERE a.hand_id IN ($recentHandsPlaceholders)
+            AND EXISTS (
+                SELECT 1 FROM actions a2 
+                WHERE a2.hand_id = a.hand_id 
+                AND a2.player_id = ?
+                AND a2.sequence_num < a.sequence_num
+            )
+            GROUP BY a.player_id, a.action_type, a.street
+        ");
+		$heroReactionsStmt->execute(array_merge($recentHandIds, [$heroPlayerId]));
+		$heroReactions = $heroReactionsStmt->fetchAll();
 
-		if (!isset($reactionAnalysis[$reaction['player_id']]['action_breakdown'][$reaction['action_type']])) {
-			$reactionAnalysis[$reaction['player_id']]['action_breakdown'][$reaction['action_type']] = 0;
-		}
-		$reactionAnalysis[$reaction['player_id']]['action_breakdown'][$reaction['action_type']] += $reaction['action_count'];
+		foreach ($heroReactions as $reaction) {
+			if (!isset($reactionAnalysis[$reaction['player_id']])) {
+				$reactionAnalysis[$reaction['player_id']] = [
+					'nickname' => $reaction['nickname'],
+					'total_actions' => 0,
+					'aggressive_actions' => 0,
+					'action_breakdown' => [],
+					'street_breakdown' => []
+				];
+			}
 
-		if (!isset($reactionAnalysis[$reaction['player_id']]['street_breakdown'][$reaction['street']])) {
-			$reactionAnalysis[$reaction['player_id']]['street_breakdown'][$reaction['street']] = [
-				'total' => 0,
-				'aggressive' => 0
-			];
+			$reactionAnalysis[$reaction['player_id']]['total_actions'] += $reaction['action_count'];
+			$reactionAnalysis[$reaction['player_id']]['aggressive_actions'] += $reaction['aggressive_count'];
+
+			if (!isset($reactionAnalysis[$reaction['player_id']]['action_breakdown'][$reaction['action_type']])) {
+				$reactionAnalysis[$reaction['player_id']]['action_breakdown'][$reaction['action_type']] = 0;
+			}
+			$reactionAnalysis[$reaction['player_id']]['action_breakdown'][$reaction['action_type']] += $reaction['action_count'];
+
+			if (!isset($reactionAnalysis[$reaction['player_id']]['street_breakdown'][$reaction['street']])) {
+				$reactionAnalysis[$reaction['player_id']]['street_breakdown'][$reaction['street']] = [
+					'total' => 0,
+					'aggressive' => 0
+				];
+			}
+			$reactionAnalysis[$reaction['player_id']]['street_breakdown'][$reaction['street']]['total'] += $reaction['action_count'];
+			$reactionAnalysis[$reaction['player_id']]['street_breakdown'][$reaction['street']]['aggressive'] += $reaction['aggressive_count'];
 		}
-		$reactionAnalysis[$reaction['player_id']]['street_breakdown'][$reaction['street']]['total'] += $reaction['action_count'];
-		$reactionAnalysis[$reaction['player_id']]['street_breakdown'][$reaction['street']]['aggressive'] += $reaction['aggressive_count'];
 	}
 
 	// Prepare complete analysis data
@@ -597,14 +379,14 @@ try {
 
 	// Call AI for analysis
 	$content = '
-		Ты — профессиональный покерный ИИ. Анализируй раздачу:
-		1. Карты: {hero_cards} | Доска: {board}
-		2. Позиция: {hero_position} (после {players_before_count} игроков)
-		3. Действия до тебя: {actions_before}
-		4. Игроки после: {players_after}
-		5. Статистика:
-		   - Перед тобой: {players_before_stats}
-		   - После тебя: {players_after_stats}
+        Ты — профессиональный покерный ИИ. Анализируй раздачу:
+        1. Карты: {hero_cards} | Доска: {board}
+        2. Позиция: {hero_position} (после {players_before_count} игроков)
+        3. Действия до тебя: {actions_before}
+        4. Игроки после: {players_after}
+        5. Статистика:
+           - Перед тобой: {players_before_stats}
+           - После тебя: {players_after_stats}
         Отвечай максимально коротко: (чек, колл, рейз X BB) | Краткое описание (3-4 слова)
     ';
 
