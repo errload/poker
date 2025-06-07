@@ -872,6 +872,8 @@ document
 			hand_id: hand_id,
 			current_street: getBoardStatus(),
 			hero_position: document.querySelector('[name="position"][data-id="999999"]').value,
+			hero_id: document.querySelector('[name="position"][data-id="999999"]').dataset.id,
+			hero_nickname: 'Player' + document.querySelector('[name="position"][data-id="999999"]').dataset.id,
 			stady: document.querySelector('.line_content .radio:checked').value
 		})
 

@@ -6,16 +6,16 @@ $response = ['success' => false, 'error' => null];
 
 try {
 	// Validate input
-//	$input = json_decode(file_get_contents('php://input'), true);
-//	if (!$input) throw new Exception('Invalid JSON input');
+	$input = json_decode(file_get_contents('php://input'), true);
+	if (!$input) throw new Exception('Invalid JSON input');
 
-	$input = [
-		'hand_id' => 4,
-		'current_street' => 'preflop',
-		'hero_position' => 'MP',
-		'hero_id' => '999999',
-		'hero_nickname' => 'Player999999'
-	];
+//	$input = [
+//		'hand_id' => 1,
+//		'current_street' => 'preflop',
+//		'hero_position' => 'MP',
+//		'hero_id' => '999999',
+//		'hero_nickname' => 'Player999999'
+//	];
 
 	$required = ['hand_id', 'current_street', 'hero_position'];
 	foreach ($required as $field) {
@@ -53,12 +53,12 @@ try {
 
 	// 2. Получение информации о шоудауне
 	$showdownStmt = $pdo->prepare("
-		SELECT s.player_id, p.nickname, s.hand_id, s.cards 
-		FROM showdown s
-		JOIN players p ON s.player_id = p.player_id
-		ORDER BY s.created_at DESC
-		LIMIT 1000 -- можно ограничить количество записей для производительности
-	");
+        SELECT s.player_id, p.nickname, s.hand_id, s.cards 
+        FROM showdown s
+        JOIN players p ON s.player_id = p.player_id
+        ORDER BY s.created_at DESC
+        LIMIT 1000
+    ");
 	$showdownStmt->execute();
 	$showdownInfo = $showdownStmt->fetchAll();
 
@@ -96,7 +96,46 @@ try {
 	$handActionsStmt->execute([':hand_id' => $input['hand_id']]);
 	$handActions = $handActionsStmt->fetchAll();
 
-	// 5. Получение всех игроков (исключая героя)
+	// Подготовка ответа
+	$response = [
+		'hid' => $input['hand_id'],
+		'street' => $input['current_street'],
+		'board' => $handInfo['board'] ?? null,
+		'hero' => [
+			'id' => $input['hero_id'] ?? null,
+			'name' => $input['hero_nickname'] ?? null,
+			'cards' => $handInfo['hero_cards'],
+			'pos' => $input['hero_position'],
+			'stack' => $handInfo['hero_stack']
+		],
+		'plrs' => [],
+		'pots' => [
+			'pf' => 0, // preflop
+			'fl' => 0, // flop
+			'tu' => 0, // turn
+			'rv' => 0  // river
+		],
+		'actions' => [
+			'pf' => [], // preflop
+			'fl' => [], // flop
+			'tu' => [], // turn
+			'rv' => []  // river
+		],
+		'sd' => [] // showdown
+	];
+
+	// Получаем ID и никнейм героя из текущей раздачи (если не были переданы)
+	if (empty($response['hero']['id'])) {
+		foreach ($currentHandPlayers as $player) {
+			if ($player['position'] === $input['hero_position']) {
+				$response['hero']['id'] = $player['player_id'];
+				$response['hero']['name'] = $player['nickname'];
+				break;
+			}
+		}
+	}
+
+	// Запрос для получения всех игроков (исключая героя по ID)
 	$allPlayersStmt = $pdo->prepare("
         SELECT player_id, nickname, 
                vpip, pfr, af, afq, three_bet, wtsd, hands_played, showdowns,
@@ -106,146 +145,71 @@ try {
                preflop_aggression, flop_aggression, turn_aggression, river_aggression,
                last_seen, created_at
         FROM players
-        WHERE player_id NOT IN (
-            SELECT player_id FROM actions 
-            WHERE hand_id = :hand_id 
-            AND position = :hero_position
-        )
+        WHERE player_id != :hero_id
         ORDER BY last_seen DESC
     ");
-	$allPlayersStmt->execute([
-		':hand_id' => $input['hand_id'],
-		':hero_position' => $input['hero_position']
-	]);
+	$allPlayersStmt->execute([':hero_id' => $response['hero']['id']]);
 	$allPlayers = $allPlayersStmt->fetchAll();
 
-	// Подготовка ответа
-	$response = [
-		'hand_id' => $input['hand_id'],
-		'current_street' => $input['current_street'],
-		'board' => $handInfo['board'] ?? null,
-		'hero' => [
-			'id' => $input['hero_id'] ?? null, // Используем переданный ID героя
-			'nickname' => $input['hero_nickname'] ?? null, // Используем переданный никнейм
-			'cards' => $handInfo['hero_cards'],
-			'position' => $input['hero_position'],
-			'stack' => $handInfo['hero_stack']
-		],
-		'players' => [],
-		'pots' => [
-			'preflop' => 0,
-			'flop' => 0,
-			'turn' => 0,
-			'river' => 0
-		],
-		'street_actions' => [
-			'preflop' => [],
-			'flop' => [],
-			'turn' => [],
-			'river' => []
-		],
-		'showdown' => []
-	];
-
-	// Получаем ID и никнейм героя из текущей раздачи (если не были переданы)
-	if (empty($response['hero']['id'])) {
-		foreach ($currentHandPlayers as $player) {
-			if ($player['position'] === $input['hero_position']) {
-				$response['hero']['id'] = $player['player_id'];
-				$response['hero']['nickname'] = $player['nickname'];
-				break;
-			}
-		}
-	}
-
-	// Запрос для получения всех игроков (исключая героя по ID)
-	$allPlayersStmt = $pdo->prepare("
-		SELECT player_id, nickname, 
-			   vpip, pfr, af, afq, three_bet, wtsd, hands_played, showdowns,
-			   preflop_raises, postflop_raises, check_raises, cbet, fold_to_cbet,
-			   aggressive_actions, passive_actions, steal_attempt, steal_success,
-			   postflop_raise_pct, check_raise_pct,
-			   preflop_aggression, flop_aggression, turn_aggression, river_aggression,
-			   last_seen, created_at
-		FROM players
-		WHERE player_id != :hero_id
-		ORDER BY last_seen DESC
-	");
-	$allPlayersStmt->execute([
-		':hero_id' => $response['hero']['id'] // Фильтруем по ID героя
-	]);
-	$allPlayers = $allPlayersStmt->fetchAll();
-
-	// Получаем список игроков, которые уже совершили действия в текущей раздаче
-	$actedPlayersStmt = $pdo->prepare("
-		SELECT DISTINCT player_id 
-		FROM actions 
-		WHERE hand_id = :hand_id
-	");
-	$actedPlayersStmt->execute([':hand_id' => $input['hand_id']]);
-	$actedPlayers = $actedPlayersStmt->fetchAll(PDO::FETCH_COLUMN);
-
-	// Добавляем игроков в ответ (уже без героя)
+	// Добавляем игроков в ответ
 	foreach ($allPlayers as $player) {
 		$playerData = [
 			'id' => $player['player_id'],
-			'nickname' => $player['nickname'],
+			'name' => $player['nickname'],
 			'stats' => [
-				'vpip' => $player['vpip'],
-				'pfr' => $player['pfr'],
-				'af' => $player['af'],
-				'afq' => $player['afq'],
-				'three_bet' => $player['three_bet'],
-				'wtsd' => $player['wtsd'],
-				'hands_played' => $player['hands_played'],
-				'showdowns' => $player['showdowns'],
-				'preflop_raises' => $player['preflop_raises'],
-				'postflop_raises' => $player['postflop_raises'],
-				'check_raises' => $player['check_raises'],
-				'cbet' => $player['cbet'],
-				'fold_to_cbet' => $player['fold_to_cbet'],
-				'steal_attempt' => $player['steal_attempt'],
-				'steal_success' => $player['steal_success'],
-				'postflop_raise_pct' => $player['postflop_raise_pct'],
-				'check_raise_pct' => $player['check_raise_pct'],
-				'preflop_aggression' => $player['preflop_aggression'],
-				'flop_aggression' => $player['flop_aggression'],
-				'turn_aggression' => $player['turn_aggression'],
-				'river_aggression' => $player['river_aggression']
+				'vp' => $player['vpip'] ?? 0,
+				'pf' => $player['pfr'] ?? 0,
+				'af' => $player['af'] ?? 0,
+				'afq' => $player['afq'] ?? 0,
+				'3b' => $player['three_bet'] ?? 0,
+				'wsd' => $player['wtsd'] ?? 0,
+				'hnd' => $player['hands_played'] ?? 0,
+				'sd' => $player['showdowns'] ?? 0,
+				'pfr' => $player['preflop_raises'] ?? 0,
+				'pofr' => $player['postflop_raises'] ?? 0,
+				'cr' => $player['check_raises'] ?? 0,
+				'cb' => $player['cbet'] ?? 0,
+				'fcb' => $player['fold_to_cbet'] ?? 0,
+				'stl' => $player['steal_attempt'] ?? 0,
+				'stls' => $player['steal_success'] ?? 0,
+				'por' => $player['postflop_raise_pct'] ?? 0,
+				'crp' => $player['check_raise_pct'] ?? 0,
+				'pfa' => $player['preflop_aggression'] ?? 0,
+				'fla' => $player['flop_aggression'] ?? 0,
+				'tua' => $player['turn_aggression'] ?? 0,
+				'rva' => $player['river_aggression'] ?? 0
 			],
-			'in_current_hand' => false,
-			'has_acted' => false, // По умолчанию игрок еще не действовал
-			'position' => null
+			'pos' => null
 		];
 
 		// Проверяем участие в текущей раздаче
 		foreach ($currentHandPlayers as $handPlayer) {
 			if ($handPlayer['player_id'] === $player['player_id']) {
-				$playerData['in_current_hand'] = true;
-				$playerData['position'] = $handPlayer['position'];
-				$playerData['has_acted'] = in_array($player['player_id'], $actedPlayers);
+				$playerData['pos'] = $handPlayer['position'];
 				break;
 			}
 		}
 
-		$response['players'][] = $playerData;
+		$response['plrs'][] = $playerData;
 	}
 
-	// Добавляем информацию о шоудауне с картами
+	// Добавляем информацию о шоудауне
 	foreach ($showdownInfo as $player) {
-		$response['showdown'][] = [
-			'player_id' => $player['player_id'],
-			'nickname' => $player['nickname'],
-			'hand_id' => $player['hand_id'],
+		$response['sd'][] = [
+			'id' => $player['player_id'],
+			'name' => $player['nickname'],
+			'hid' => $player['hand_id'],
 			'cards' => $player['cards']
 		];
 	}
 
-	// Добавляем действия по улицам
+	// Добавляем действия по улицам и рассчитываем банки
 	foreach ($handActions as $action) {
 		$street = $action['street'];
-		$playerNickname = '';
+		$streetKey = substr($street, 0, 2); // pf, fl, tu, rv
 
+		// Находим никнейм игрока
+		$playerNickname = '';
 		foreach ($allPlayers as $player) {
 			if ($player['player_id'] === $action['player_id']) {
 				$playerNickname = $player['nickname'];
@@ -253,45 +217,33 @@ try {
 			}
 		}
 
-		$response['street_actions'][$street][] = [
-			'player' => $playerNickname,
-			'action' => $action['action_type'],
-			'amount' => $action['amount'],
-			'is_aggressive' => $action['is_aggressive'],
-			'is_voluntary' => $action['is_voluntary'],
-			'is_cbet' => $action['is_cbet'],
-			'is_steal' => $action['is_steal']
+		// Добавляем действие
+		$response['actions'][$streetKey][] = [
+			'plr' => $playerNickname,
+			'act' => $action['action_type'],
+			'amt' => $action['amount'],
+			'agg' => $action['is_aggressive'],
+			'vol' => $action['is_voluntary'],
+			'cb' => $action['is_cbet'],
+			'stl' => $action['is_steal']
 		];
 
+		// Увеличиваем банк для текущей улицы
 		if (in_array($action['action_type'], ['bet', 'raise', 'all-in']) && $action['amount'] > 0) {
-			$response['pots'][$street] += $action['amount'];
+			$response['pots'][$streetKey] += $action['amount'];
 		}
 	}
 
-	die(print_r($response));
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-	$analysisData = [];
-
-	$content = '
-        Ты — профессиональный покерный ИИ. Анализируй раздачу:
+	// Формируем запрос к AI
+	$analysisData = json_encode($response, JSON_UNESCAPED_UNICODE);
+	$content = "
+        Ты — профессиональный покерный ИИ-ассистент с опытом в Texas Hold'em турнире Bounty 8 max.
+        Твоя задача — анализировать текущую раздачу и давать оптимальные рекомендации для героя.
+        Оцени силу руки героя по текущей доске и позиции.
+        Анализируй действия оппонентов, размер банка и стеков, тенденции улицы.
         Отвечай максимально коротко: (чек, колл, рейз X BB) | Краткое описание (3-4 слова)
-    ';
+        $analysisData
+    ";
 
 	$api_key = 'sk-JBDhoWZZwZSn8q2xmqmi9zETz12StFzC';
 	$url = 'https://api.proxyapi.ru/openai/v1/chat/completions';
@@ -306,16 +258,21 @@ try {
 		'messages' => [[ 'role' => 'user', 'content' => $content ]],
 		'temperature' => 0.3
 	]));
-	$response = curl_exec($ch);
+	$apiResponse = curl_exec($ch);
 
-	if (curl_errno($ch)) echo json_encode('Ошибка cURL: ' . curl_error($ch));
-	else {
-		$response = $response->choices[0]->message->content;
-		echo json_encode($response = [
-			'success' => true,
-			'analysis' => $analysisData,
-			'data' => trim($response->choices[0]->message->content)
-		]);
+	if (curl_errno($ch)) {
+		$response['error'] = 'Ошибка cURL: ' . curl_error($ch);
+	} else {
+		$apiData = json_decode($apiResponse, true);
+		if (isset($apiData['choices'][0]['message']['content'])) {
+			$response = [
+				'success' => true,
+				'analysis' => $response,
+				'data' => trim($apiData['choices'][0]['message']['content'])
+			];
+		} else {
+			$response['error'] = 'Неверный формат ответа от API';
+		}
 	}
 
 } catch (Exception $e) {
