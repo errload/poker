@@ -74,7 +74,12 @@ const sendAjax = async (url, params) => {
 document
 	.querySelectorAll('.position_del_button')
 	.forEach(button => {
-		button.addEventListener('click', async function () {
+		button.addEventListener('click', async function (e) {
+			if (parseInt(this.dataset.id) === 999999) return false
+
+			e.target.disabled = true
+			e.target.textContent = '...'
+
 			await sendAjax(
 			'/4bet/api/delete_player.php', {
 				player_id: this.dataset.id
@@ -86,6 +91,9 @@ document
 				.closest('.position_wrapper')
 				.querySelector('[name="position"]')
 				.dataset.id = random_id
+
+			e.target.disabled = false
+			e.target.textContent = 'del'
 		})
 	})
 
@@ -93,10 +101,16 @@ document
 document
 	.querySelector('.clear')
 	.addEventListener('click', async function () {
+		document.querySelector('.clear').disabled = true
+		document.querySelector('.clear').textContent = '...'
+
 		const result = await sendAjax(
-			'/4bet/api/reset_database.php', {
-				confirm: true
-			})
+		'/4bet/api/reset_database.php', {
+			confirm: true
+		})
+
+		document.querySelector('.clear').disabled = false
+		document.querySelector('.clear').textContent = 'clear'
 	})
 
 // отображение игрока текущего действия
@@ -199,6 +213,8 @@ document
 	.querySelector('.reset')
 	.addEventListener('click', async () => {
 		if (!document.querySelectorAll('[name="position"]:checked').length) return false
+		document.querySelector('.reset').disabled = true
+		document.querySelector('.reset').textContent = '...'
 
 		let players = []
 		document
@@ -275,6 +291,9 @@ document
 		hand_id = result.hand_id
 		setStreetBidCounter()
 		showCurrentPlayer()
+
+		document.querySelector('.reset').disabled = false
+		document.querySelector('.reset').textContent = 'reset'
 	})
 
 // выбор карт
@@ -584,6 +603,10 @@ document
 
 		const current_element = getCurrentPosition()
 		if (!current_element) return false
+
+		document.querySelector('.fold').disabled = true
+		document.querySelector('.fold').textContent = '...'
+
 		current_element.dataset.action = 'inactive'
 		current_element.nextElementSibling.style.color = '#e7e7e7'
 
@@ -600,6 +623,9 @@ document
 		start_position++
 		if (start_position > 7) start_position = 0
 		showCurrentPlayer()
+
+		document.querySelector('.fold').disabled = false
+		document.querySelector('.fold').textContent = 'fold'
 	})
 
 // call
@@ -611,6 +637,9 @@ document
 
 		const current_element = getCurrentPosition()
 		if (!current_element) return false
+
+		document.querySelector('.call').disabled = true
+		document.querySelector('.call').textContent = '...'
 
 		await sendAjax('/4bet/api/action_handler.php', {
 			'hand_id': hand_id,
@@ -625,6 +654,9 @@ document
 		start_position++
 		if (start_position > 7) start_position = 0
 		showCurrentPlayer()
+
+		document.querySelector('.call').disabled = false
+		document.querySelector('.call').textContent = 'call'
 	})
 
 // check
@@ -636,6 +668,9 @@ document
 
 		const current_element = getCurrentPosition()
 		if (!current_element) return false
+
+		document.querySelector('.check').disabled = true
+		document.querySelector('.check').textContent = '...'
 
 		await sendAjax('/4bet/api/action_handler.php', {
 			'hand_id': hand_id,
@@ -650,6 +685,9 @@ document
 		start_position++
 		if (start_position > 7) start_position = 0
 		showCurrentPlayer()
+
+		document.querySelector('.check').disabled = false
+		document.querySelector('.check').textContent = 'check'
 	})
 
 // raise
@@ -658,6 +696,12 @@ document
 	.addEventListener('click', async function () {
 		if (getBoardStatus() === 'showdown') return false
 		if (!document.querySelectorAll('[name="position"]:checked').length) return false
+
+		const current_element = getCurrentPosition()
+		if (!current_element) return false
+
+		document.querySelector('.raise').disabled = true
+		document.querySelector('.raise').textContent = '...'
 
 		const overlay = document.createElement('div')
 		overlay.classList.add('popup-overlay')
@@ -707,9 +751,6 @@ document
 			.forEach(bid_raise => {
 				bid_raise.addEventListener('click', async (e) => {
 					bid_counter = parseFloat(e.target.textContent)
-
-					const current_element = getCurrentPosition()
-					if (!current_element) return false
 
 					await sendAjax('/4bet/api/action_handler.php', {
 						'hand_id': hand_id,
@@ -725,6 +766,9 @@ document
 					if (start_position > 7) start_position = 0
 					showCurrentPlayer()
 					document.body.removeChild(overlay)
+
+					document.querySelector('.raise').disabled = false
+					document.querySelector('.raise').textContent = 'raise'
 				})
 			})
 	})
@@ -735,6 +779,12 @@ document
 	.addEventListener('click', async function () {
 		if (getBoardStatus() === 'showdown') return false
 		if (!document.querySelectorAll('[name="position"]:checked').length) return false
+
+		const current_element = getCurrentPosition()
+		if (!current_element) return false
+
+		document.querySelector('.all-in').disabled = true
+		document.querySelector('.all-in').textContent = '...'
 
 		const overlay = document.createElement('div')
 		overlay.classList.add('popup-overlay')
@@ -785,8 +835,6 @@ document
 				bid_raise.addEventListener('click', async (e) => {
 					bid_counter = parseFloat(e.target.textContent)
 
-					const current_element = getCurrentPosition()
-					if (!current_element) return false
 					current_element.dataset.action = 'all-in'
 					current_element.nextElementSibling.style.color = '#e7e7e7'
 
@@ -804,6 +852,9 @@ document
 					if (start_position > 7) start_position = 0
 					showCurrentPlayer()
 					document.body.removeChild(overlay)
+
+					document.querySelector('.all-in').disabled = false
+					document.querySelector('.all-in').textContent = 'all-in'
 				})
 			})
 	})
@@ -813,6 +864,8 @@ document
 	.querySelector('.gto')
 	.addEventListener('click', async function () {
 		if (!document.querySelectorAll('[name="position"]:checked').length) return false
+		document.querySelector('.gto').disabled = true
+		document.querySelector('.gto').textContent = '...'
 		document.querySelector('.line_result').textContent = ''
 
 		const result = await sendAjax('/4bet/api/get_hand_analysis.php', {
@@ -823,4 +876,6 @@ document
 		})
 
 		document.querySelector('.line_result').textContent = result.data
+		document.querySelector('.gto').disabled = false
+		document.querySelector('.gto').textContent = 'gto'
 	})
