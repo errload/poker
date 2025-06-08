@@ -216,7 +216,7 @@ function processActionData(PDO $pdo, array $input, float $currentBet, bool $hasP
 		'finalActionType' => $input['action_type'],
 		'amount' => null,
 		'isVoluntary' => true,
-		'isAggressive' => false,
+		'isAggressive' => in_array($input['action_type'], ['bet', 'raise', 'all-in']),
 		'isFirstAction' => $isFirstAction
 	];
 

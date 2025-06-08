@@ -6,17 +6,17 @@ $response = ['success' => false, 'error' => null];
 
 try {
 	// Validate input
-	$input = json_decode(file_get_contents('php://input'), true);
-	if (!$input) throw new Exception('Invalid JSON input');
+//	$input = json_decode(file_get_contents('php://input'), true);
+//	if (!$input) throw new Exception('Invalid JSON input');
 
-//	$input = [
-//		'hand_id' => 3,
-//		'current_street' => 'preflop',
-//		'hero_position' => 'MP',
-//		'hero_id' => '999999',
-//		'hero_nickname' => 'Player999999',
-//		'stady' => 'ранняя'
-//	];
+	$input = [
+		'hand_id' => 3,
+		'current_street' => 'preflop',
+		'hero_position' => 'MP',
+		'hero_id' => '999999',
+		'hero_nickname' => 'Player999999',
+		'stady' => 'ранняя'
+	];
 
 	$required = ['hand_id', 'current_street', 'hero_position'];
 	foreach ($required as $field) {
@@ -225,40 +225,94 @@ try {
 	foreach ($showdownInfo as $player) {
 		$response['showdown'][] = [
 			'player_id' => $player['player_id'],
-			'name' => $player['nickname'],
+			'nickname' => $player['nickname'],
 			'hand_id' => $player['hand_id'],
 			'cards' => $player['cards']
 		];
 	}
 
+	// Инициализация переменных для подсчета банка
+	$streetBets = []; // Текущие ставки игроков на улице
+	$streetPot = 0;   // Банк на текущей улице
+	$lastStreet = null;
+
 	// Добавляем действия по улицам и рассчитываем банки
 	foreach ($handActions as $action) {
 		$street = strtolower($action['street']);
 
+		// Если перешли на новую улицу, сбрасываем ставки
+		if ($street !== $lastStreet) {
+			$streetBets = [];
+			$streetPot = 0;
+			$lastStreet = $street;
+		}
+
+		$playerId = $action['player_id'];
+		$amount = (float)$action['amount'];
+		$actionType = $action['action_type'];
+
+		// Инициализируем ставку игрока, если еще не было
+		if (!isset($streetBets[$playerId])) {
+			$streetBets[$playerId] = 0;
+		}
+
 		// Находим никнейм игрока
 		$playerNickname = '';
 		foreach ($allPlayers as $player) {
-			if ($player['player_id'] === $action['player_id']) {
+			if ($player['player_id'] === $playerId) {
 				$playerNickname = $player['nickname'];
 				break;
 			}
 		}
 
+		// Получаем текущую максимальную ставку на улице
+		$maxBet = !empty($streetBets) ? max($streetBets) : 0;
+
 		// Добавляем действие
 		$response['actions'][$street][] = [
 			'player' => $playerNickname,
-			'action' => $action['action_type'],
-			'amount' => $action['amount'],
+			'action' => $actionType,
+			'amount' => $amount,
 			'is_aggressive' => $action['is_aggressive'],
 			'is_voluntary' => $action['is_voluntary'],
 			'is_cbet' => $action['is_cbet'],
 			'is_steal' => $action['is_steal']
 		];
 
-		// Увеличиваем банк для текущей улицы
-		if (in_array($action['action_type'], ['bet', 'raise', 'all-in']) && $action['amount'] > 0) {
-			$response['pots'][$street] += $action['amount'];
+		// Обрабатываем действие для подсчета банка
+		switch ($actionType) {
+			case 'bet':
+				$streetPot += ($amount - $streetBets[$playerId]);
+				$streetBets[$playerId] = $amount;
+				break;
+
+			case 'raise':
+				$streetPot += ($amount - $streetBets[$playerId]);
+				$streetBets[$playerId] = $amount;
+				break;
+
+			case 'call':
+				$streetPot += ($maxBet - $streetBets[$playerId]);
+				$streetBets[$playerId] = $maxBet;
+				break;
+
+			case 'all-in':
+				if ($amount > $maxBet) {
+					$streetPot += ($amount - $streetBets[$playerId]);
+				} else {
+					$streetPot += ($maxBet - $streetBets[$playerId]);
+				}
+				$streetBets[$playerId] = $amount;
+				break;
+
+			case 'check':
+			case 'fold':
+				// Не влияют на банк
+				break;
 		}
+
+		// Обновляем банк на текущей улице
+		$response['pots'][$street] = $streetPot;
 	}
 
 	// Вспомогательные функции
@@ -308,91 +362,150 @@ try {
 		return $callAmount > 0 ? round($callAmount / ($totalPot + $callAmount) * 100) . '%' : '0%';
 	}
 
+	function printActionHistory($actions) {
+		$output = "";
+		foreach ($actions as $street => $streetActions) {
+			if (!empty($streetActions)) {
+				$output .= "{$street}:\n";
+				foreach ($streetActions as $action) {
+					$betSize = ($action['action'] !== 'check' && $action['action'] !== 'fold')
+						? " {$action['amount']} бб" : "";
+					$output .= "- {$action['player']} {$action['action']}{$betSize}";
+					if ($action['is_aggressive']) $output .= " (АГРЕССИЯ)";
+					$output .= "\n";
+				}
+			}
+		}
+		return $output;
+	}
+
+	function getLastAggressionDetails($actions) {
+		$aggressors = [];
+		$streets = ['preflop', 'flop', 'turn', 'river'];
+
+		foreach ($streets as $street) {
+			if (!empty($actions[$street])) {
+				foreach ($actions[$street] as $action) {
+					if ($action['is_aggressive']) {
+						$aggressors[$street] = [
+							'player' => $action['player'],
+							'action' => $action['action'],
+							'amount' => $action['amount']
+						];
+					}
+				}
+			}
+		}
+
+		if (empty($aggressors)) return "Агрессивных действий нет";
+
+		$output = "";
+		foreach ($aggressors as $street => $details) {
+			$output .= "{$street}: {$details['player']} {$details['action']} {$details['amount']}бб\n";
+		}
+		return $output;
+	}
+
+	function analyzeOpponentsRanges($response) {
+		if (empty($response['showdown'])) return "Данные шоудауна отсутствуют";
+
+		$ranges = [];
+		foreach ($response['showdown'] as $showdown) {
+			$playerId = $showdown['player_id'];
+			if (!isset($ranges[$playerId])) {
+				$ranges[$playerId] = [
+					'nickname' => $showdown['nickname'],
+					'cards' => [],
+					'vpip' => 0,
+					'pfr' => 0
+				];
+
+				// Находим статистику игрока
+				foreach ($response['players'] as $player) {
+					if ($player['id'] == $playerId) {
+						$ranges[$playerId]['vpip'] = $player['stats']['vpip'];
+						$ranges[$playerId]['pfr'] = $player['stats']['pfr'];
+						break;
+					}
+				}
+			}
+			$ranges[$playerId]['cards'][] = $showdown['cards'];
+		}
+
+		$output = "";
+		foreach ($ranges as $playerId => $data) {
+			$output .= "{$data['nickname']} (VPIP: {$data['vpip']}%, PFR: {$data['pfr']}%):\n";
+			$output .= "- Показанные руки: " . implode(", ", $data['cards']) . "\n";
+			$output .= "- Предполагаемый диапазон: " . estimateRange($data) . "\n";
+		}
+		return $output;
+	}
+
+	function estimateRange($playerData) {
+		$vpip = $playerData['vpip'];
+		$shownHands = $playerData['cards'];
+
+		if ($vpip < 15) return "Узкий (TT+, AQ+)";
+		if ($vpip < 25) return "Умеренный (77+, AT+, KQ)";
+		if ($vpip < 35) return "Широкий (22+, Ax+, Kx+)";
+		return "Очень широкий (любые карты)";
+	}
+
+	function calculateRecommendedBet($potSize, $effectiveStack) {
+		$betSizes = [
+			'small' => round($potSize * 0.33),
+			'medium' => round($potSize * 0.66),
+			'large' => round($potSize * 1)
+		];
+
+		$allInThreshold = $effectiveStack * 0.3;
+		foreach ($betSizes as $type => $size) {
+			if ($size >= $allInThreshold) {
+				return "Олл-ин {$effectiveStack}бб (слишком короткий стек)";
+			}
+		}
+
+		return "Рекомендуемые размеры: малый ({$betSizes['small']}бб), средний ({$betSizes['medium']}бб), крупный ({$betSizes['large']}бб)";
+	}
+
 	// Формируем запрос к AI
 	$analysisData = json_encode($response, JSON_UNESCAPED_UNICODE);
 	$board = $response['board'] ?? 'нет карт';
 	$content = "
-		### УНИВЕРСАЛЬНЫЙ АЛГОРИТМ АНАЛИЗА ДЛЯ ВСЕХ УЛИЦ
-		**ПРАВИЛА АНАЛИЗА КАРТ**:
-		- Формат карт: [ранг][масть] (например: QsQh, AdKs, Th9c)
-		- Сила руки определяется по таблице силы префлоп-рук (см. ниже)
-		**КЛЮЧЕВЫЕ ФАКТОРЫ ДЛЯ ПРИНЯТИЯ РЕШЕНИЙ**:
-		- Сила руки (см. классификацию ниже)
-		- Позиция (BTN > CO > MP > UTG)
-		- Действия оппонентов (колл/рейз/3-бет)
-		- Размер ставок (в бб)
-		- Эффективный стек
-		- Стадия турнира (ранняя/средняя/поздняя)
-		- Статистика оппонентов (VPIP, PFR, AF)
-		**ОЦЕНКА РУКИ ГЕРОЯ**:
-		- Всегда проверяй, не формируют ли карты героя какую-то комбинацию или совпадение с бордом
-		Пример:  
-		- Борд: 9hThJd Td Kc + рука QsQh → стрит (9-T-J-Q-K).  
-		- Борд: Ah5h9h + рука 2h7h → флеш (5 карт одной масти).  
-		- Если рука героя завершает какую-то комбинацию — это СИЛЬНАЯ рука. 
-		**КЛАССИФИКАЦИЯ СИЛЫ РУК**:
-		Префлоп:
-		- TOP 5%: AA, KK, QQ, AKs
-		- TOP 10%: JJ, TT, AQs, AKo
-		- TOP 20%: 99, 88, AJs, KQs
-		- SPEC: 22-77, suited connectors (T9s+), Axs
-		Флоп/Терн/Ривер:
-		- MONSTER: Флеш/Стрит/Сет/Две пары+
-		- STRONG: Топ-пара+ (с хорошим кикером)
-		- MEDIUM: Средняя пара, дро (8+ аутсов)
-		- WEAK: Слабые пары, дро (<8 аутсов)
-		**СТРАТЕГИЯ ПО УЛИЦАМ**:
-		Префлоп:
-		- TOP 5%: 3-бет/рейз (кроме UTG)
-		- TOP 10%: Рейз/колл против рейза
-		- TOP 20%: Колл/фолд в зависимости от позиции
-		- SPEC: Колл только в поздних позициях
-		Флоп:
-		- MONSTER: Агрессия (рейз/донк)
-		- STRONG: Контролируемая агрессия
-		- MEDIUM: Чек/колл с дро
-		- WEAK: Фолд против агрессии
-		Терн:
-		- Анализ новых аутсов
-		- Переоценка силы руки
-		- Учет текстуры борда
-		Ривер:
-		- Финальная оценка силы
-		- Анализ линии оппонента
-		- Блеф только с хорошей историей
-		**РЕКОМЕНДАЦИИ ПРОТИВ АГРЕССИИ**:
-		- Против рейза: 3-бет с TOP 10%+, колл с MEDIUM+
-		- Против 3-бета: Колл только с MONSTER/TOP 5%
-		- Против 4-бета: Пуш только с AA/KK
-		- Если на текущей улице все игроки прочекали, рекомендуй чек или бет (если есть шанс выиграть банк)  
-		- Рекомендация фолд допустима ТОЛЬКО при агрессивных действиях оппонентов (рейз, бет, олл-ин)
-		- Рекомендация чек на префлопе допустима ТОЛЬКО в позиции BB, если не было агрессивных действиях оппонентов (рейз, бет, олл-ин)
-		**ФОРМАТ ОТВЕТА**:
-		Отвечай максимально коротко: [Действие] [Размер] | [Обоснование в несколько слов]
-		Примеры:
-		- 3-бет 22бб | QQ против рейза CO
-		- Колл | TdTs + флеш-дро
-		- Фолд | Слабый дро против 2 баррелей
-		**ТЕКУЩАЯ СИТУАЦИЯ**:
-		- Улица: {$input['current_street']}
-		- Герой: {$response['hero']['cards']} ({$input['hero_position']})
-		- Борд: {$board}
-		- Последняя агрессия: " . getLastAggressiveAction($response['actions']) . "
-		- Эффективный стек: " . getEffectiveStack($response) . " бб
-		- Pot odds: " . calculatePotOdds($response) . "
-		- Стадия: {$input['stady']}
+### ПОЛНЫЙ АНАЛИЗ РАЗДАЧИ С ДИНАМИКОЙ ИГРЫ
+**АНАЛИЗ ТЕКУЩЕЙ СИТУАЦИИ**:
+- Улица: {$input['current_street']}
+- Герой: {$response['hero']['cards']} → [Анализ комбинации]
+- Борд: {$board} → [Анализ возможных комбинаций]
+- Эффективный стек: " . getEffectiveStack($response) . " бб
+- Pot odds: " . calculatePotOdds($response) . "
+- Общий банк: " . array_sum($response['pots']) . " бб
+
+**ИСТОРИЯ ДЕЙСТВИЙ**:
+" . printActionHistory($response['actions']) . "
+
+**ПОСЛЕДНЯЯ АГРЕССИЯ**:
+" . getLastAggressionDetails($response['actions']) . "
+
+**АНАЛИЗ ДИАПАЗОНОВ ОППОНЕНТОВ**:
+" . analyzeOpponentsRanges($response) . "
+
+**ДЕТАЛЬНЫЕ РЕКОМЕНДАЦИИ**:
+1. Сначала определи точную комбинацию героя
+2. Проанализируй линию оппонентов (кто агрессор, кто пассивен)
+3. Учитывай размер последней ставки и банк
+4. Построй диапазоны оппонентов на основе showdown
+5. Предложи математически обоснованное действие
+
+**ФОРМАТ ОТВЕТА**:
+Отвечай максимально коротко: [Действие] [Размер] | [Комбинация] + [Анализ динамики] + [Диапазон оппонента] (буквально несколько слов)
+Примеры:
+- 3-бет 22бб | QQ (префлоп) + против рейза от loose CO (VPIP 45%)
+- Колл 8бб | Флеш-дро (9 аутов) + pot odds 28% против TAG (PFR 22%)
+- Фолд | Слабый дро против 2 баррелей от агрессора (AF 4.1)
 	";
 
-	// Добавляем историю действий если нужно
-	foreach ($response['actions'] as $street => $actions) {
-		if (!empty($actions)) {
-			$content .= "\n{$street}:\n";
-			foreach ($actions as $action) {
-				$content .= "- {$action['player']} {$action['action']} {$action['amount']}";
-				$content .= ($action['action'] !== 'check' && $action['action'] !== 'fold') ? " бб\n" : "\n";
-			}
-		}
-	}
+//	die(var_dump($content));
 
 	$api_key = 'sk-JBDhoWZZwZSn8q2xmqmi9zETz12StFzC';
 	$url = 'https://api.proxyapi.ru/openai/v1/chat/completions';
