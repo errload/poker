@@ -421,12 +421,13 @@ label {
     border-radius: 3px;
     padding: 20px 30px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-    max-width: 620px;
-    min-width: 300px;
+    max-width: 640px;
+    max-height: 600px;
     text-align: center;
     display: flex;
     flex-direction: row;
     flex-wrap: wrap;
+    overflow-y: auto;
 }
 
 .bid-row {
