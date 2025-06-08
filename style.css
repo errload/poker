@@ -316,6 +316,8 @@ label {
 .check:hover { background: #4d4c4c; }
 .all-in { background: #ea944e; }
 .all-in:hover { background: #d98745; }
+.next { background: #A0A0A0; }
+.next:hover { background: #A0A0A0; }
 
 .player1 { bottom: -20px; }
 .player7 { right: -20px; }

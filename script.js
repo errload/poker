@@ -605,6 +605,30 @@ const getCurrentPosition = () => {
 	return found_element
 }
 
+// next
+document
+	.querySelector('.next')
+	.addEventListener('click', async function () {
+		if (getBoardStatus() === 'showdown') return false
+		if (!document.querySelectorAll('[name="position"]:checked').length) return false
+
+		const current_element = getCurrentPosition()
+		if (!current_element) return false
+
+		document.querySelector('.next').disabled = true
+		document.querySelector('.next').textContent = '...'
+
+		current_element.dataset.action = 'inactive'
+		current_element.nextElementSibling.style.color = '#e7e7e7'
+
+		start_position++
+		if (start_position > 7) start_position = 0
+		showCurrentPlayer()
+
+		document.querySelector('.next').disabled = false
+		document.querySelector('.next').textContent = 'next'
+	})
+
 // fold
 document
 	.querySelector('.fold')
