@@ -605,9 +605,9 @@ const getCurrentPosition = () => {
 	return found_element
 }
 
-// next
+// skip
 document
-	.querySelector('.next')
+	.querySelector('.skip')
 	.addEventListener('click', async function () {
 		if (getBoardStatus() === 'showdown') return false
 		if (!document.querySelectorAll('[name="position"]:checked').length) return false
@@ -615,8 +615,8 @@ document
 		const current_element = getCurrentPosition()
 		if (!current_element) return false
 
-		document.querySelector('.next').disabled = true
-		document.querySelector('.next').textContent = '...'
+		document.querySelector('.skip').disabled = true
+		document.querySelector('.skip').textContent = '...'
 
 		current_element.dataset.action = 'inactive'
 		current_element.nextElementSibling.style.color = '#e7e7e7'
@@ -625,8 +625,8 @@ document
 		if (start_position > 7) start_position = 0
 		showCurrentPlayer()
 
-		document.querySelector('.next').disabled = false
-		document.querySelector('.next').textContent = 'next'
+		document.querySelector('.skip').disabled = false
+		document.querySelector('.skip').textContent = 'skip'
 	})
 
 // fold
@@ -944,5 +944,5 @@ document
 		} catch (e) {}
 
 		document.querySelector('.gto').disabled = false
-		document.querySelector('.gto').textContent = 'gto'
+		document.querySelector('.gto').textContent = 'GTO'
 	})

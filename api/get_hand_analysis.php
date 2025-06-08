@@ -10,7 +10,7 @@ try {
 	if (!$input) throw new Exception('Invalid JSON input');
 
 //	$input = [
-//		'hand_id' => 1,
+//		'hand_id' => 3,
 //		'current_street' => 'preflop',
 //		'hero_position' => 'MP',
 //		'hero_id' => '999999',
@@ -261,40 +261,138 @@ try {
 		}
 	}
 
+	// Вспомогательные функции
+	function getLastAggressiveAction($actions) {
+		$streets = ['preflop', 'flop', 'turn', 'river'];
+		$lastAction = null;
+
+		foreach ($streets as $street) {
+			if (!empty($actions[$street])) {
+				foreach (array_reverse($actions[$street]) as $action) {
+					if (in_array($action['action'], ['raise', 'all-in', 'bet'])) {
+						return "{$action['player']} {$action['action']} {$action['amount']} бб";
+					}
+				}
+			}
+		}
+
+		return 'Нет агрессивных действий';
+	}
+
+	function getEffectiveStack($response) {
+		$heroStack = $response['hero']['stack'];
+		$minStack = $heroStack;
+
+		foreach ($response['players'] as $player) {
+			if ($player['stack'] < $minStack) {
+				$minStack = $player['stack'];
+			}
+		}
+
+		return min($heroStack, $minStack);
+	}
+
+	function calculatePotOdds($response) {
+		$totalPot = 0;
+		$callAmount = 0;
+
+		foreach ($response['actions'] as $street => $actions) {
+			foreach ($actions as $action) {
+				$totalPot += $action['amount'];
+				if ($action['action'] == 'raise') {
+					$callAmount = $action['amount'];
+				}
+			}
+		}
+
+		return $callAmount > 0 ? round($callAmount / ($totalPot + $callAmount) * 100) . '%' : '0%';
+	}
+
 	// Формируем запрос к AI
 	$analysisData = json_encode($response, JSON_UNESCAPED_UNICODE);
-	$stady = $input['stady'];
+	$board = $response['board'] ?? 'нет карт';
 	$content = "
-		Стадия турнира - $stady.
-        Ты — профессиональный покерный ИИ-ассистент для турниров Texas Hold'em Bounty 8 max.\n
-        Твоя задача — давать максимально точные и агрессивные рекомендации, основываясь на:\n
-        1. Анализе силы руки:\n
-		- Четко определяй реальный потенциал руки героя (не путай дро оппонента с дро героя)\n
-		- Учитывай опасные борды (монтоны, стрит-дро, парные)\n
-		- Различай сильные дро (nut flush draw, OESD) и слабые\n
-		2. Агрессивной стратегии:\n
-		- Рекомендуй фолд против агрессивных игроков с узким диапазоном\n
-		- Давление на слабых оппонентов (steal, c-bet, squeeze)\n
-		- Избегай пассивных линий (чек/колл без веской причины)\n
-		- На префлопе: чек ТОЛЬКО для BB без ставок, иначе фолд/колл/рейз\n
-		3. Чтении оппонентов:\n
-		- Учитывай статистику (VPIP/PFR/AF) каждого игрока\n
-		- Выявляй тайтов (fold to 3bet > 60%) и лузовых (VPIP > 35%)\n
-		- Адаптируйся к стадии турнира (ранняя/средняя/поздняя)\n
-		4. Анализ showdown\n
-		- Изучи карты игроков в шоудауне (поле 'showdown' в данных)
-		- Определи типичные диапазоны рук для каждого оппонента (какие руки показывают, с какими доходят до ривера)
-		5. Размерах ставок:\n
-		- Рекомендуй рейзы против лузовых\n
-		- 3bet против steal-попыток\n
-		- Размер c-bet 50-75% банка\n
-		Формат ответа: (действие: фолд/чек/колл/рейз X BB) | (Обоснование, буквально в 3-5 словах)\n
-		Примеры правильных рекомендаций:\n
-		Рейз 2.5BB | Давление на лузового UTG\n
-		Фолд | Слабый KJo против 3bet тайта\n
-		Колл | Nut flush draw с odds\n
-        $analysisData
-    ";
+		### УНИВЕРСАЛЬНЫЙ АЛГОРИТМ АНАЛИЗА ДЛЯ ВСЕХ УЛИЦ
+		**ПРАВИЛА АНАЛИЗА КАРТ**:
+		- Формат карт: [ранг][масть] (например: QsQh, AdKs, Th9c)
+		- Сила руки определяется по таблице силы префлоп-рук (см. ниже)
+		**КЛЮЧЕВЫЕ ФАКТОРЫ ДЛЯ ПРИНЯТИЯ РЕШЕНИЙ**:
+		- Сила руки (см. классификацию ниже)
+		- Позиция (BTN > CO > MP > UTG)
+		- Действия оппонентов (колл/рейз/3-бет)
+		- Размер ставок (в бб)
+		- Эффективный стек
+		- Стадия турнира (ранняя/средняя/поздняя)
+		- Статистика оппонентов (VPIP, PFR, AF)
+		**ОЦЕНКА РУКИ ГЕРОЯ**:
+		- Всегда проверяй, не формируют ли карты героя какую-то комбинацию или совпадение с бордом
+		Пример:  
+		- Борд: 9hThJd Td Kc + рука QsQh → стрит (9-T-J-Q-K).  
+		- Борд: Ah5h9h + рука 2h7h → флеш (5 карт одной масти).  
+		- Если рука героя завершает какую-то комбинацию — это СИЛЬНАЯ рука. 
+		**КЛАССИФИКАЦИЯ СИЛЫ РУК**:
+		Префлоп:
+		- TOP 5%: AA, KK, QQ, AKs
+		- TOP 10%: JJ, TT, AQs, AKo
+		- TOP 20%: 99, 88, AJs, KQs
+		- SPEC: 22-77, suited connectors (T9s+), Axs
+		Флоп/Терн/Ривер:
+		- MONSTER: Флеш/Стрит/Сет/Две пары+
+		- STRONG: Топ-пара+ (с хорошим кикером)
+		- MEDIUM: Средняя пара, дро (8+ аутсов)
+		- WEAK: Слабые пары, дро (<8 аутсов)
+		**СТРАТЕГИЯ ПО УЛИЦАМ**:
+		Префлоп:
+		- TOP 5%: 3-бет/рейз (кроме UTG)
+		- TOP 10%: Рейз/колл против рейза
+		- TOP 20%: Колл/фолд в зависимости от позиции
+		- SPEC: Колл только в поздних позициях
+		Флоп:
+		- MONSTER: Агрессия (рейз/донк)
+		- STRONG: Контролируемая агрессия
+		- MEDIUM: Чек/колл с дро
+		- WEAK: Фолд против агрессии
+		Терн:
+		- Анализ новых аутсов
+		- Переоценка силы руки
+		- Учет текстуры борда
+		Ривер:
+		- Финальная оценка силы
+		- Анализ линии оппонента
+		- Блеф только с хорошей историей
+		**РЕКОМЕНДАЦИИ ПРОТИВ АГРЕССИИ**:
+		- Против рейза: 3-бет с TOP 10%+, колл с MEDIUM+
+		- Против 3-бета: Колл только с MONSTER/TOP 5%
+		- Против 4-бета: Пуш только с AA/KK
+		- Если на текущей улице все игроки прочекали, рекомендуй чек или бет (если есть шанс выиграть банк)  
+		- Рекомендация фолд допустима ТОЛЬКО при агрессивных действиях оппонентов (рейз, бет, олл-ин)
+		- Рекомендация чек на префлопе допустима ТОЛЬКО в позиции BB, если не было агрессивных действиях оппонентов (рейз, бет, олл-ин)
+		**ФОРМАТ ОТВЕТА**:
+		Отвечай максимально коротко: [Действие] [Размер] | [Обоснование в несколько слов]
+		Примеры:
+		- 3-бет 22бб | QQ против рейза CO
+		- Колл | TdTs + флеш-дро
+		- Фолд | Слабый дро против 2 баррелей
+		**ТЕКУЩАЯ СИТУАЦИЯ**:
+		- Улица: {$input['current_street']}
+		- Герой: {$response['hero']['cards']} ({$input['hero_position']})
+		- Борд: {$board}
+		- Последняя агрессия: " . getLastAggressiveAction($response['actions']) . "
+		- Эффективный стек: " . getEffectiveStack($response) . " бб
+		- Pot odds: " . calculatePotOdds($response) . "
+		- Стадия: {$input['stady']}
+	";
+
+	// Добавляем историю действий если нужно
+	foreach ($response['actions'] as $street => $actions) {
+		if (!empty($actions)) {
+			$content .= "\n{$street}:\n";
+			foreach ($actions as $action) {
+				$content .= "- {$action['player']} {$action['action']} {$action['amount']}";
+				$content .= ($action['action'] !== 'check' && $action['action'] !== 'fold') ? " бб\n" : "\n";
+			}
+		}
+	}
 
 	$api_key = 'sk-JBDhoWZZwZSn8q2xmqmi9zETz12StFzC';
 	$url = 'https://api.proxyapi.ru/openai/v1/chat/completions';
@@ -307,7 +405,7 @@ try {
 	curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
 		'model' => 'gpt-4.1-mini',
 		'messages' => [[ 'role' => 'user', 'content' => $content ]],
-		'temperature' => 0.3
+		'temperature' => 0.5
 	]));
 	$apiResponse = curl_exec($ch);
 
