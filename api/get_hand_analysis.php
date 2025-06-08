@@ -99,30 +99,30 @@ try {
 
 	// Подготовка ответа
 	$response = [
-		'hid' => $input['hand_id'],
-		'street' => $input['current_street'],
+		'hand_id' => $input['hand_id'],
+		'current_street' => $input['current_street'],
 		'board' => $handInfo['board'] ?? null,
 		'hero' => [
 			'id' => $input['hero_id'] ?? null,
 			'name' => $input['hero_nickname'] ?? null,
 			'cards' => $handInfo['hero_cards'],
-			'pos' => $input['hero_position'],
+			'position' => $input['hero_position'],
 			'stack' => $handInfo['hero_stack']
 		],
-		'plrs' => [],
+		'players' => [],
 		'pots' => [
-			'pr' => 0, // preflop
-			'fl' => 0, // flop
-			'tu' => 0, // turn
-			'ri' => 0  // river
+			'preflop' => 0,
+			'flop' => 0,
+			'turn' => 0,
+			'river' => 0
 		],
 		'actions' => [
-			'pr' => [], // preflop
-			'fl' => [], // flop
-			'tu' => [], // turn
-			'ri' => []  // river
+			'preflop' => [],
+			'flop' => [],
+			'turn' => [],
+			'river' => []
 		],
-		'sd' => [] // showdown
+		'showdown' => []
 	];
 
 	// Получаем ID и никнейм героя из текущей раздачи (если не были переданы)
@@ -138,76 +138,102 @@ try {
 
 	// Запрос для получения всех игроков (исключая героя по ID)
 	$allPlayersStmt = $pdo->prepare("
-        SELECT player_id, nickname, 
-               vpip, pfr, af, afq, three_bet, wtsd, hands_played, showdowns,
-               preflop_raises, postflop_raises, check_raises, cbet, fold_to_cbet,
-               aggressive_actions, passive_actions, steal_attempt, steal_success,
-               postflop_raise_pct, check_raise_pct,
-               preflop_aggression, flop_aggression, turn_aggression, river_aggression,
-               last_seen, created_at
-        FROM players
-        WHERE player_id != :hero_id
-        ORDER BY last_seen DESC
-    ");
+		SELECT 
+			player_id, 
+			nickname, 
+			vpip, 
+			pfr, 
+			af, 
+			afq, 
+			three_bet, 
+			wtsd, 
+			hands_played, 
+			showdowns,
+			preflop_raises, 
+			postflop_raises, 
+			check_raises, 
+			cbet, 
+			fold_to_cbet,
+			aggressive_actions, 
+			passive_actions, 
+			steal_attempt, 
+			steal_success,
+			postflop_raise_pct, 
+			check_raise_pct,
+			preflop_aggression, 
+			flop_aggression, 
+			turn_aggression, 
+			river_aggression,
+			last_seen, 
+			created_at,
+			CASE WHEN player_id = :hero_id THEN 1 ELSE 0 END as is_hero
+		FROM players
+		ORDER BY 
+			CASE WHEN player_id = :hero_id THEN 0 ELSE 1 END,
+			last_seen DESC
+	");
 	$allPlayersStmt->execute([':hero_id' => $response['hero']['id']]);
 	$allPlayers = $allPlayersStmt->fetchAll();
 
 	// Добавляем игроков в ответ
 	foreach ($allPlayers as $player) {
+		if ($player['hands_played'] < 10) continue;
+		if ((int)$player['id'] === (int)$input['hero_id']) continue;
+
 		$playerData = [
 			'id' => $player['player_id'],
 			'name' => $player['nickname'],
 			'stats' => [
-				'vp' => $player['vpip'] ?? 0,
-				'pf' => $player['pfr'] ?? 0,
-				'af' => $player['af'] ?? 0,
-				'afq' => $player['afq'] ?? 0,
-				'3b' => $player['three_bet'] ?? 0,
-				'wsd' => $player['wtsd'] ?? 0,
-				'hnd' => $player['hands_played'] ?? 0,
-				'sd' => $player['showdowns'] ?? 0,
-				'pfr' => $player['preflop_raises'] ?? 0,
-				'pofr' => $player['postflop_raises'] ?? 0,
-				'cr' => $player['check_raises'] ?? 0,
-				'cb' => $player['cbet'] ?? 0,
-				'fcb' => $player['fold_to_cbet'] ?? 0,
-				'stl' => $player['steal_attempt'] ?? 0,
-				'stls' => $player['steal_success'] ?? 0,
-				'por' => $player['postflop_raise_pct'] ?? 0,
-				'crp' => $player['check_raise_pct'] ?? 0,
-				'pfa' => $player['preflop_aggression'] ?? 0,
-				'fla' => $player['flop_aggression'] ?? 0,
-				'tua' => $player['turn_aggression'] ?? 0,
-				'rva' => $player['river_aggression'] ?? 0
+				'vpip' => $player['vpip'] ?? 0,
+				'pfr' => $player['pfr'] ?? 0,
+				'aggression_factor' => $player['af'] ?? 0,
+				'aggression_frequency' => $player['afq'] ?? 0,
+				'three_bet' => $player['three_bet'] ?? 0,
+				'went_to_showdown' => $player['wtsd'] ?? 0,
+				'hands_played' => $player['hands_played'] ?? 0,
+				'showdowns' => $player['showdowns'] ?? 0,
+				'preflop_raises' => $player['preflop_raises'] ?? 0,
+				'postflop_raises' => $player['postflop_raises'] ?? 0,
+				'check_raises' => $player['check_raises'] ?? 0,
+				'cbet' => $player['cbet'] ?? 0,
+				'fold_to_cbet' => $player['fold_to_cbet'] ?? 0,
+				'steal_attempt' => $player['steal_attempt'] ?? 0,
+				'steal_success' => $player['steal_success'] ?? 0,
+				'postflop_raise_percent' => $player['postflop_raise_pct'] ?? 0,
+				'check_raise_percent' => $player['check_raise_pct'] ?? 0,
+				'preflop_aggression' => $player['preflop_aggression'] ?? 0,
+				'flop_aggression' => $player['flop_aggression'] ?? 0,
+				'turn_aggression' => $player['turn_aggression'] ?? 0,
+				'river_aggression' => $player['river_aggression'] ?? 0
 			],
-			'pos' => null
+			'position' => null,
+			'stats_reliable' => ($player['hands_played'] >= 50)
 		];
 
 		// Проверяем участие в текущей раздаче
 		foreach ($currentHandPlayers as $handPlayer) {
 			if ($handPlayer['player_id'] === $player['player_id']) {
-				$playerData['pos'] = $handPlayer['position'];
+				$playerData['position'] = $handPlayer['position'];
 				break;
 			}
 		}
 
-		$response['plrs'][] = $playerData;
+		$response['players'][] = $playerData;
 	}
 
 	// Добавляем информацию о шоудауне
 	foreach ($showdownInfo as $player) {
-		$response['sd'][] = [
-			'id' => $player['player_id'],
+		$response['showdown'][] = [
+			'player_id' => $player['player_id'],
 			'name' => $player['nickname'],
-			'hid' => $player['hand_id'],
+			'hand_id' => $player['hand_id'],
 			'cards' => $player['cards']
 		];
 	}
 
 	// Добавляем действия по улицам и рассчитываем банки
 	foreach ($handActions as $action) {
-		$street = $action['street'];
-		$streetKey = substr($street, 0, 2); // pf, fl, tu, rv
+		$street = strtolower($action['street']);
 
 		// Находим никнейм игрока
 		$playerNickname = '';
@@ -219,19 +245,19 @@ try {
 		}
 
 		// Добавляем действие
-		$response['actions'][$streetKey][] = [
-			'plr' => $playerNickname,
-			'act' => $action['action_type'],
-			'amt' => $action['amount'],
-			'agg' => $action['is_aggressive'],
-			'vol' => $action['is_voluntary'],
-			'cb' => $action['is_cbet'],
-			'stl' => $action['is_steal']
+		$response['actions'][$street][] = [
+			'player' => $playerNickname,
+			'action' => $action['action_type'],
+			'amount' => $action['amount'],
+			'is_aggressive' => $action['is_aggressive'],
+			'is_voluntary' => $action['is_voluntary'],
+			'is_cbet' => $action['is_cbet'],
+			'is_steal' => $action['is_steal']
 		];
 
 		// Увеличиваем банк для текущей улицы
 		if (in_array($action['action_type'], ['bet', 'raise', 'all-in']) && $action['amount'] > 0) {
-			$response['pots'][$streetKey] += $action['amount'];
+			$response['pots'][$street] += $action['amount'];
 		}
 	}
 
@@ -255,7 +281,10 @@ try {
 		- Учитывай статистику (VPIP/PFR/AF) каждого игрока\n
 		- Выявляй тайтов (fold to 3bet > 60%) и лузовых (VPIP > 35%)\n
 		- Адаптируйся к стадии турнира (ранняя/средняя/поздняя)\n
-		4. Размерах ставок:\n
+		4. Анализ showdown\n
+		- Изучи карты игроков в шоудауне (поле 'showdown' в данных)
+		- Определи типичные диапазоны рук для каждого оппонента (какие руки показывают, с какими доходят до ривера)
+		5. Размерах ставок:\n
 		- Рекомендуй рейзы 2.2-2.5x против лузовых\n
 		- 3bet 8-12BB против steal-попыток\n
 		- Размер c-bet 50-75% банка\n
