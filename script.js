@@ -7,6 +7,12 @@ let position_ids = []
 let start_position = 2 // начало раздачи, UTG
 let cards_showdown = []
 
+window.onload = function () {
+	document
+		.querySelectorAll('[name="position"]')[0]
+		.click()
+}
+
 // получение рандомного ID
 function generateRandomId(length = 6) {
 	const chars = '123456789'
@@ -21,14 +27,13 @@ function generateRandomId(length = 6) {
 // присвоение ID позициям
 document
 	.querySelectorAll('[name="position"]')
-	.forEach((position, key) => {
+	.forEach(async (position, key) => {
 		const random_id = generateRandomId()
 		position.dataset.id = random_id
 		position.closest('.position_wrapper').querySelector('.position_del_button').dataset.id = random_id
 		if (key === 0) {
 			position.dataset.id = position_id
 			position.closest('.position_wrapper').querySelector('.position_del_button').dataset.id = position_id
-			position.checked = true
 		}
 		document.querySelectorAll('[name="board_stady"]')[0].checked = true
 		position_ids.push(position.dataset.id)
@@ -196,15 +201,17 @@ document
 			document.querySelector('.line_bids').textContent = ''
 			document.querySelectorAll('[name="board_stady"]')[0].checked = true
 
-			const result = await sendAjax('/4bet/api/new_hand_mysql.php', {
-				hero_position: document.querySelector('[name="position"][data-id="999999"]').value,
-				hero_stack: document.querySelector('.stack').textContent,
-				hero_cards: null
-			})
+			try {
+				const result = await sendAjax('/4bet/api/new_hand_mysql.php', {
+					hero_position: document.querySelector('[name="position"][data-id="999999"]').value,
+					hero_stack: document.querySelector('.stack').textContent,
+					hero_cards: null
+				})
 
-			hand_id = result.hand_id
-			setStreetBidCounter()
-			showCurrentPlayer()
+				hand_id = result.hand_id
+				setStreetBidCounter()
+				showCurrentPlayer()
+			} catch (e) {}
 		})
 	})
 
@@ -228,10 +235,12 @@ document
 				})
 			})
 
-		await sendAjax('/4bet/api/showdown_handler.php', {
-			hand_id: hand_id,
-			players: players
-		})
+		try {
+			await sendAjax('/4bet/api/showdown_handler.php', {
+				hand_id: hand_id,
+				players: players
+			})
+		} catch (e) {}
 
 		let current_index = null
 		let next_index = null
@@ -282,15 +291,17 @@ document
 		document.querySelector('.line_bids').textContent = ''
 		document.querySelectorAll('[name="board_stady"]')[0].checked = true
 
-		const result = await sendAjax('/4bet/api/new_hand_mysql.php', {
-			hero_position: document.querySelector('[name="position"][data-id="999999"]').value,
-			hero_stack: document.querySelector('.stack').textContent,
-			hero_cards: null
-		})
+		try {
+			const result = await sendAjax('/4bet/api/new_hand_mysql.php', {
+				hero_position: document.querySelector('[name="position"][data-id="999999"]').value,
+				hero_stack: document.querySelector('.stack').textContent,
+				hero_cards: null
+			})
 
-		hand_id = result.hand_id
-		setStreetBidCounter()
-		showCurrentPlayer()
+			hand_id = result.hand_id
+			setStreetBidCounter()
+			showCurrentPlayer()
+		} catch (e) {}
 
 		document.querySelector('.reset').disabled = false
 		document.querySelector('.reset').textContent = 'reset'
@@ -610,19 +621,21 @@ document
 		current_element.dataset.action = 'inactive'
 		current_element.nextElementSibling.style.color = '#e7e7e7'
 
-		await sendAjax('/4bet/api/action_handler.php', {
-			'hand_id': hand_id,
-			'player_id': current_element.dataset.id,
-			"street": getBoardStatus(),
-			'action_type': 'fold',
-			'amount': null,
-			'position': current_element.value
-		})
+		try {
+			await sendAjax('/4bet/api/action_handler.php', {
+				'hand_id': hand_id,
+				'player_id': current_element.dataset.id,
+				"street": getBoardStatus(),
+				'action_type': 'fold',
+				'amount': null,
+				'position': current_element.value
+			})
 
-		addBidDescription(`${current_element.value}:fold`)
-		start_position++
-		if (start_position > 7) start_position = 0
-		showCurrentPlayer()
+			addBidDescription(`${current_element.value}:fold`)
+			start_position++
+			if (start_position > 7) start_position = 0
+			showCurrentPlayer()
+		} catch (e) {}
 
 		document.querySelector('.fold').disabled = false
 		document.querySelector('.fold').textContent = 'fold'
@@ -641,19 +654,21 @@ document
 		document.querySelector('.call').disabled = true
 		document.querySelector('.call').textContent = '...'
 
-		await sendAjax('/4bet/api/action_handler.php', {
-			'hand_id': hand_id,
-			'player_id': current_element.dataset.id,
-			"street": getBoardStatus(),
-			'action_type': 'call',
-			'amount': bid_counter,
-			'position': current_element.value
-		})
+		try {
+			await sendAjax('/4bet/api/action_handler.php', {
+				'hand_id': hand_id,
+				'player_id': current_element.dataset.id,
+				"street": getBoardStatus(),
+				'action_type': 'call',
+				'amount': bid_counter,
+				'position': current_element.value
+			})
 
-		addBidDescription(`${current_element.value}:call ${bid_counter} bb`)
-		start_position++
-		if (start_position > 7) start_position = 0
-		showCurrentPlayer()
+			addBidDescription(`${current_element.value}:call ${bid_counter} bb`)
+			start_position++
+			if (start_position > 7) start_position = 0
+			showCurrentPlayer()
+		} catch (e) {}
 
 		document.querySelector('.call').disabled = false
 		document.querySelector('.call').textContent = 'call'
@@ -672,19 +687,21 @@ document
 		document.querySelector('.check').disabled = true
 		document.querySelector('.check').textContent = '...'
 
-		await sendAjax('/4bet/api/action_handler.php', {
-			'hand_id': hand_id,
-			'player_id': current_element.dataset.id,
-			"street": getBoardStatus(),
-			'action_type': 'check',
-			'amount': null,
-			'position': current_element.value
-		})
+		try {
+			await sendAjax('/4bet/api/action_handler.php', {
+				'hand_id': hand_id,
+				'player_id': current_element.dataset.id,
+				"street": getBoardStatus(),
+				'action_type': 'check',
+				'amount': null,
+				'position': current_element.value
+			})
 
-		addBidDescription(`${current_element.value}:check`)
-		start_position++
-		if (start_position > 7) start_position = 0
-		showCurrentPlayer()
+			addBidDescription(`${current_element.value}:check`)
+			start_position++
+			if (start_position > 7) start_position = 0
+			showCurrentPlayer()
+		} catch (e) {}
 
 		document.querySelector('.check').disabled = false
 		document.querySelector('.check').textContent = 'check'
@@ -752,21 +769,23 @@ document
 				bid_raise.addEventListener('click', async (e) => {
 					bid_counter = parseFloat(e.target.textContent)
 
-					await sendAjax('/4bet/api/action_handler.php', {
-						'hand_id': hand_id,
-						'player_id': current_element.dataset.id,
-						"street": getBoardStatus(),
-						'action_type': 'raise',
-						'amount': bid_counter,
-						'position': current_element.value
-					})
+					try {
+						await sendAjax('/4bet/api/action_handler.php', {
+							'hand_id': hand_id,
+							'player_id': current_element.dataset.id,
+							"street": getBoardStatus(),
+							'action_type': 'raise',
+							'amount': bid_counter,
+							'position': current_element.value
+						})
 
-					addBidDescription(`${current_element.value}:raise ${bid_counter} bb`)
-					start_position++
-					if (start_position > 7) start_position = 0
-					showCurrentPlayer()
+						addBidDescription(`${current_element.value}:raise ${bid_counter} bb`)
+						start_position++
+						if (start_position > 7) start_position = 0
+						showCurrentPlayer()
+					} catch (e) {}
+
 					document.body.removeChild(overlay)
-
 					document.querySelector('.raise').disabled = false
 					document.querySelector('.raise').textContent = 'raise'
 				})
@@ -838,21 +857,23 @@ document
 					current_element.dataset.action = 'all-in'
 					current_element.nextElementSibling.style.color = '#e7e7e7'
 
-					await sendAjax('/4bet/api/action_handler.php', {
-						'hand_id': hand_id,
-						'player_id': current_element.dataset.id,
-						"street": getBoardStatus(),
-						'action_type': 'all-in',
-						'amount': bid_counter,
-						'position': current_element.value
-					})
+					try {
+						await sendAjax('/4bet/api/action_handler.php', {
+							'hand_id': hand_id,
+							'player_id': current_element.dataset.id,
+							"street": getBoardStatus(),
+							'action_type': 'all-in',
+							'amount': bid_counter,
+							'position': current_element.value
+						})
 
-					addBidDescription(`${current_element.value}:all-in ${bid_counter} bb`)
-					start_position++
-					if (start_position > 7) start_position = 0
-					showCurrentPlayer()
+						addBidDescription(`${current_element.value}:all-in ${bid_counter} bb`)
+						start_position++
+						if (start_position > 7) start_position = 0
+						showCurrentPlayer()
+					} catch (e) {}
+
 					document.body.removeChild(overlay)
-
 					document.querySelector('.all-in').disabled = false
 					document.querySelector('.all-in').textContent = 'all-in'
 				})
@@ -868,16 +889,18 @@ document
 		document.querySelector('.gto').textContent = '...'
 		document.querySelector('.line_result').textContent = ''
 
-		const result = await sendAjax('/4bet/api/get_hand_analysis.php', {
-			hand_id: hand_id,
-			current_street: getBoardStatus(),
-			hero_position: document.querySelector('[name="position"][data-id="999999"]').value,
-			hero_id: document.querySelector('[name="position"][data-id="999999"]').dataset.id,
-			hero_nickname: 'Player' + document.querySelector('[name="position"][data-id="999999"]').dataset.id,
-			stady: document.querySelector('.line_content .radio:checked').value
-		})
+		try {
+			const result = await sendAjax('/4bet/api/get_hand_analysis.php', {
+				hand_id: hand_id,
+				current_street: getBoardStatus(),
+				hero_position: document.querySelector('[name="position"][data-id="999999"]').value,
+				hero_id: document.querySelector('[name="position"][data-id="999999"]').dataset.id,
+				hero_nickname: 'Player' + document.querySelector('[name="position"][data-id="999999"]').dataset.id,
+				stady: document.querySelector('.line_content .radio:checked').value
+			})
+			document.querySelector('.line_result').textContent = result.data
+		} catch (e) {}
 
-		document.querySelector('.line_result').textContent = result.data
 		document.querySelector('.gto').disabled = false
 		document.querySelector('.gto').textContent = 'gto'
 	})
