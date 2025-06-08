@@ -316,23 +316,6 @@ try {
 	}
 
 	// Вспомогательные функции
-	function getLastAggressiveAction($actions) {
-		$streets = ['preflop', 'flop', 'turn', 'river'];
-		$lastAction = null;
-
-		foreach ($streets as $street) {
-			if (!empty($actions[$street])) {
-				foreach (array_reverse($actions[$street]) as $action) {
-					if (in_array($action['action'], ['raise', 'all-in', 'bet'])) {
-						return "{$action['player']} {$action['action']} {$action['amount']} бб";
-					}
-				}
-			}
-		}
-
-		return 'Нет агрессивных действий';
-	}
-
 	function getEffectiveStack($response) {
 		$heroStack = $response['hero']['stack'];
 		$minStack = $heroStack;
@@ -451,58 +434,35 @@ try {
 		return "Очень широкий (любые карты)";
 	}
 
-	function calculateRecommendedBet($potSize, $effectiveStack) {
-		$betSizes = [
-			'small' => round($potSize * 0.33),
-			'medium' => round($potSize * 0.66),
-			'large' => round($potSize * 1)
-		];
-
-		$allInThreshold = $effectiveStack * 0.3;
-		foreach ($betSizes as $type => $size) {
-			if ($size >= $allInThreshold) {
-				return "Олл-ин {$effectiveStack}бб (слишком короткий стек)";
-			}
-		}
-
-		return "Рекомендуемые размеры: малый ({$betSizes['small']}бб), средний ({$betSizes['medium']}бб), крупный ({$betSizes['large']}бб)";
-	}
-
 	// Формируем запрос к AI
 	$analysisData = json_encode($response, JSON_UNESCAPED_UNICODE);
 	$board = $response['board'] ?? 'нет карт';
 	$content = "
-### ПОЛНЫЙ АНАЛИЗ РАЗДАЧИ С ДИНАМИКОЙ ИГРЫ
-**АНАЛИЗ ТЕКУЩЕЙ СИТУАЦИИ**:
-- Улица: {$input['current_street']}
-- Герой: {$response['hero']['cards']} → [Анализ комбинации]
-- Борд: {$board} → [Анализ возможных комбинаций]
-- Эффективный стек: " . getEffectiveStack($response) . " бб
-- Pot odds: " . calculatePotOdds($response) . "
-- Общий банк: " . array_sum($response['pots']) . " бб
-
-**ИСТОРИЯ ДЕЙСТВИЙ**:
-" . printActionHistory($response['actions']) . "
-
-**ПОСЛЕДНЯЯ АГРЕССИЯ**:
-" . getLastAggressionDetails($response['actions']) . "
-
-**АНАЛИЗ ДИАПАЗОНОВ ОППОНЕНТОВ**:
-" . analyzeOpponentsRanges($response) . "
-
-**ДЕТАЛЬНЫЕ РЕКОМЕНДАЦИИ**:
-1. Сначала определи точную комбинацию героя
-2. Проанализируй линию оппонентов (кто агрессор, кто пассивен)
-3. Учитывай размер последней ставки и банк
-4. Построй диапазоны оппонентов на основе showdown
-5. Предложи математически обоснованное действие
-
-**ФОРМАТ ОТВЕТА**:
-Отвечай максимально коротко: [Действие] [Размер] | [Комбинация] + [Анализ динамики] + [Диапазон оппонента] (буквально несколько слов)
-Примеры:
-- 3-бет 22бб | QQ (префлоп) + против рейза от loose CO (VPIP 45%)
-- Колл 8бб | Флеш-дро (9 аутов) + pot odds 28% против TAG (PFR 22%)
-- Фолд | Слабый дро против 2 баррелей от агрессора (AF 4.1)
+		Ты — профессиональный покерный советник. Анализируй раздачу строго по шагам:\n
+		Определи комбинацию героя:\n
+		- Карты героя: (hero->cards)\n
+		- Борд: (board)\n
+		- Используй правила Техасского Холдема. Если комбинация неочевидна (например, стрит или флеш), перечисли карты, которые её формируют\n
+		Проанализируй историю действий:\n
+		- Префлоп: (actions->preflop)\n
+		- Флоп: (actions->flop)\n
+		- Терн: (actions->turn)\n
+		- Ривер: (actions->river)\n
+		- Определи агрессора, пассивных игроков и их паттерны (например, C-bet, чек-рейз)\n
+		Оцени диапазоны оппонентов:\n
+		- Учитывай их статистику (VPIP, PFR, AF) из (players)\n
+		- Если есть данные шоудауна (showdown), используй их для сужения диапазона\n
+		Дай рекомендацию:\n
+		- Отвечай максимально коротко: [Действие (если рейз, то сколько)] | [Комбинация] + [Короткое описание] (буквально 3-5 слов)\n
+		- В ответе не нужно расписывать всю последовательность действий, от тебя требуется только рекомендация к действию\n
+		- Примеры:
+		- Рейз 15бб | Сет (QQ) + слабая защита блайндов (PFR 10%)\n
+		- Фолд | Оверпара (KK) + 2 барреля от нита (AF 4.1)\n
+		- Чек-колл | Флеш-дро (9 аутов) + pot odds 25%\n
+		Важно:\n
+		- Если у героя стрит/флеш/сет или сильнее — НЕ рекомендуй фолд\n
+		- Всегда учитывай эффективный стек и pot odds\n
+		$analysisData
 	";
 
 //	die(var_dump($content));
@@ -516,7 +476,7 @@ try {
 	curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 	curl_setopt($ch, CURLOPT_POST, true);
 	curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-		'model' => 'gpt-4.1-mini',
+		'model' => 'gpt-4o',
 		'messages' => [[ 'role' => 'user', 'content' => $content ]],
 		'temperature' => 0.5
 	]));
@@ -543,5 +503,3 @@ try {
 	if (isset($ch)) curl_close($ch);
 	echo json_encode($response, JSON_UNESCAPED_UNICODE);
 }
-
-?>
