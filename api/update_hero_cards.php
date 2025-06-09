@@ -19,8 +19,8 @@ try {
 	}
 
 	// Проверяем формат карт (2 символа - без масти, 4 символа - с мастью)
-	if (!preg_match('/^[2-9TJQKA][cdhs][2-9TJQKA][cdhs]$|^[2-9TJQKA]{2}$/i', $input['hero_cards'])) {
-		throw new Exception("Invalid cards format. Use format like 'AhKd' or 'AK'");
+	if (!preg_match('/^[2-9TJQKA][cdhs]\s[2-9TJQKA][cdhs]$/i', $input['hero_cards'])) {
+		throw new Exception("Invalid cards format. Use format like 'Ah Kd'");
 	}
 
 	// Создаем подключение только после проверки входных данных

@@ -340,7 +340,7 @@ document
 					showdown_slot2.dataset.card = this.dataset.slot
 
 					cards = showdown_slot1.textContent + showdown_slot1.dataset.card
-					cards += showdown_slot2.textContent + showdown_slot2.dataset.card
+					cards += ' ' + showdown_slot2.textContent + showdown_slot2.dataset.card
 					cards_showdown.push(cards)
 					return false
 				}
@@ -358,7 +358,7 @@ document
 					showdown_slot4.dataset.card = this.dataset.slot
 
 					cards = showdown_slot3.textContent + showdown_slot3.dataset.card
-					cards += showdown_slot4.textContent + showdown_slot4.dataset.card
+					cards += ' ' + showdown_slot4.textContent + showdown_slot4.dataset.card
 					cards_showdown.push(cards)
 					return false
 				}
@@ -376,7 +376,7 @@ document
 					showdown_slot6.dataset.card = this.dataset.slot
 
 					cards = showdown_slot5.textContent + showdown_slot5.dataset.card
-					cards += showdown_slot6.textContent + showdown_slot6.dataset.card
+					cards += ' ' + showdown_slot6.textContent + showdown_slot6.dataset.card
 					cards_showdown.push(cards)
 					return false
 				}
@@ -394,7 +394,7 @@ document
 					showdown_slot8.dataset.card = this.dataset.slot
 
 					cards = showdown_slot7.textContent + showdown_slot7.dataset.card
-					cards += showdown_slot8.textContent + showdown_slot8.dataset.card
+					cards += ' ' + showdown_slot8.textContent + showdown_slot8.dataset.card
 					cards_showdown.push(cards)
 					return false
 				}
@@ -420,7 +420,7 @@ document
 					my_slot2.dataset.card = this.dataset.slot
 
 					cards = my_slot1.textContent + my_slot1.dataset.card
-					cards += my_slot2.textContent + my_slot2.dataset.card
+					cards += ' ' + my_slot2.textContent + my_slot2.dataset.card
 
 					await sendAjax('/4bet/api/update_hero_cards.php', {
 						hand_id: hand_id,
@@ -450,8 +450,8 @@ document
 					board_slot3.dataset.card = this.dataset.slot
 
 					cards = board_slot1.textContent + board_slot1.dataset.card
-					cards += board_slot2.textContent + board_slot2.dataset.card
-					cards += board_slot3.textContent + board_slot3.dataset.card
+					cards += ' ' + board_slot2.textContent + board_slot2.dataset.card
+					cards += ' ' + board_slot3.textContent + board_slot3.dataset.card
 
 					await sendAjax('/4bet/api/update_board.php', {
 						hand_id: hand_id,
@@ -468,8 +468,8 @@ document
 					board_slot4.dataset.card = this.dataset.slot
 
 					cards = board_slot1.textContent + board_slot1.dataset.card
-					cards += board_slot2.textContent + board_slot2.dataset.card
-					cards += board_slot3.textContent + board_slot3.dataset.card
+					cards += ' ' + board_slot2.textContent + board_slot2.dataset.card
+					cards += ' ' + board_slot3.textContent + board_slot3.dataset.card
 					cards += ' ' + board_slot4.textContent + board_slot4.dataset.card
 
 					await sendAjax('/4bet/api/update_board.php', {
@@ -487,8 +487,8 @@ document
 					board_slot5.dataset.card = this.dataset.slot
 
 					cards = board_slot1.textContent + board_slot1.dataset.card
-					cards += board_slot2.textContent + board_slot2.dataset.card
-					cards += board_slot3.textContent + board_slot3.dataset.card
+					cards += ' ' + board_slot2.textContent + board_slot2.dataset.card
+					cards += ' ' + board_slot3.textContent + board_slot3.dataset.card
 					cards += ' ' + board_slot4.textContent + board_slot4.dataset.card
 					cards += ' ' + board_slot5.textContent + board_slot5.dataset.card
 

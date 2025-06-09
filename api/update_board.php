@@ -29,8 +29,8 @@ try {
 	}
 
 	// Проверяем формат board
-	if ($input['board'] !== '' && !preg_match('/^([2-9TJQKA][cdhs]){2,5}( [2-9TJQKA][cdhs]){0,2}$/i', $input['board'])) {
-		throw new Exception("Invalid board format. Use format like 'Jc7d2h' for flop, 'Jc7d2h 5s' for turn, 'Jc7d2h 5s As' for river", 3);
+	if ($input['board'] !== '' && !preg_match('/^([2-9TJQKA][cdhs])( [2-9TJQKA][cdhs]){1,4}( [2-9TJQKA][cdhs]){0,2}$/i', $input['board'])) {
+		throw new Exception("Invalid board format. Use format like 'Jc 7d 2h' for flop, 'Jc 7d 2h 5s' for turn, 'Jc 7d 2h 5s As' for river", 3);
 	}
 
 	// Проверяем существование hand_id

@@ -80,8 +80,8 @@ try {
 			$processedPlayers[] = $playerId;
 
 			// Проверка формата карт
-			if (!preg_match('/^([2-9TJQKA][hdcs]){1,2}$/i', $player['cards'])) {
-				$errors[] = "Invalid cards format for player {$playerId}. Valid examples: '7c6s', 'Ah', 'KdJc'";
+			if (!preg_match('/^([2-9TJQKA][hdcs])(\s[2-9TJQKA][hdcs])?$/i', $player['cards'])) {
+				$errors[] = "Invalid cards format for player {$playerId}. Valid examples: '7c 6s', 'Ah', 'Kd Jc'";
 				continue;
 			}
 
