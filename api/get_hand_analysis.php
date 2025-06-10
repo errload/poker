@@ -6,17 +6,17 @@ $response = ['success' => false, 'error' => null];
 
 try {
 	// Validate input
-	$input = json_decode(file_get_contents('php://input'), true);
-	if (!$input) throw new Exception('Invalid JSON input');
+//	$input = json_decode(file_get_contents('php://input'), true);
+//	if (!$input) throw new Exception('Invalid JSON input');
 
-//	$input = [
-//		'hand_id' => 7,
-//		'current_street' => 'turn',
-//		'hero_position' => 'CO',
-//		'hero_id' => '999999',
-//		'hero_nickname' => 'Player999999',
-//		'stady' => 'ранняя'
-//	];
+	$input = [
+		'hand_id' => 1,
+		'current_street' => 'preflop',
+		'hero_position' => 'MP',
+		'hero_id' => '999999',
+		'hero_nickname' => 'Player999999',
+		'stady' => 'early'
+	];
 
 	$required = ['hand_id', 'current_street', 'hero_position'];
 	foreach ($required as $field) {
@@ -100,6 +100,7 @@ try {
 	// Подготовка ответа
 	$response = [
 		'hand_id' => $input['hand_id'],
+		'stady' => $input['stady'],
 		'current_street' => $input['current_street'],
 		'board' => $handInfo['board'] ?? null,
 		'hero' => [
@@ -177,8 +178,8 @@ try {
 
 	// Добавляем игроков в ответ
 	foreach ($allPlayers as $player) {
-		if ($player['hands_played'] < 10) continue;
-		if ((int)$player['id'] === (int)$input['hero_id']) continue;
+		if ($player['hands_played'] < 1) continue;
+		if ((int)$player['player_id'] === (int)$input['hero_id']) continue;
 
 		$playerData = [
 			'id' => $player['player_id'],
@@ -545,11 +546,176 @@ try {
 //- Check | Нет эквити на монотонном борде
 
 	// Формируем запрос к AI
-	$analysisData = json_encode($response, JSON_UNESCAPED_UNICODE);
+//	$analysisData = json_encode($response, JSON_UNESCAPED_UNICODE);
+
+	$board = $response['board'] ?? 'Борд пока не открыт';
+
+
+	function getCompactPlayersStats($players) {
+		if (empty($players)) {
+			return json_encode(['players_stats' => null], JSON_UNESCAPED_UNICODE);
+		}
+
+		$result = [];
+
+		foreach ($players as $player) {
+			$stats = [];
+
+			// Базовая информация
+			$stats['position'] = $player['position'] ?? null;
+			$stats['reliable'] = $player['stats_reliable'];
+
+			// Форматируем статистику
+			foreach ($player['stats'] as $key => $value) {
+				$formattedKey = str_replace('_', ' ', $key);
+
+				if (in_array($key, ['vpip', 'pfr', 'three_bet', 'wtsd', 'cbet', 'fold_to_cbet',
+					'steal_attempt', 'steal_success', 'postflop_raise_pct', 'check_raise_pct'])) {
+					$stats[$formattedKey] = round($value) . '%';
+				} else {
+					$stats[$formattedKey] = is_float($value) ? round($value, 2) : $value;
+				}
+			}
+
+			$result[$player['name']] = $stats;
+		}
+
+		return json_encode(['players_stats' => $result], JSON_UNESCAPED_UNICODE);
+	}
+
+	function formatPotInfo($pots, $currentStreet) {
+		$totalPot = array_sum($pots);
+
+		if ($totalPot > 0) {
+			return "{$totalPot} BB";
+		} else {
+			if ($currentStreet == 'preflop') {
+				return "1.5 BB (блайнды), ставок еще не было";
+			} else {
+				return "1.5 BB (блайнды), ставок на текущей улице не было";
+			}
+		}
+	}
+
+	function formatStreetActions() {
+		global $response;
+
+		$result = [];
+		$streets_order = ['preflop', 'flop', 'turn', 'river'];
+		$current_street = $response['current_street'];
+
+		foreach ($streets_order as $street) {
+			// Если улица пустая и это текущая улица
+			if (empty($response['actions'][$street]) && $street === $current_street) {
+				$result[$street] = "Моя очередь делать ставку первым";
+				break;
+			}
+
+			// Если улица не пустая - выводим все действия
+			if (!empty($response['actions'][$street])) {
+				$street_actions = [];
+				$last_aggressive = null;
+
+				foreach ($response['actions'][$street] as $action) {
+					// Находим позицию игрока
+					$position = '';
+					foreach ($response['players'] as $player) {
+						if ($player['name'] === $action['player']) {
+							$position = $player['position'];
+							break;
+						}
+					}
+
+					$action_data = [
+						'player' => $action['player'],
+						'position' => $position,
+						'action' => $action['action'],
+						'amount' => $action['amount'] > 0 ? $action['amount'] . ' BB' : null,
+						'is_aggressive' => $action['is_aggressive']
+					];
+
+					if ($action['is_aggressive']) {
+						$last_aggressive = $action_data;
+					}
+
+					$street_actions[] = $action_data;
+				}
+
+				$result[$street] = [
+					'actions' => $street_actions,
+					'last_aggressive' => $last_aggressive
+				];
+
+				// Если это текущая улица - добавляем что мой ход
+				if ($street === $current_street) {
+					if ($last_aggressive) {
+						$result[$street]['my_turn'] = "Моя очередь делать ставку после " .
+							$last_aggressive['action'] . " от " .
+							$last_aggressive['player'] . " (" .
+							$last_aggressive['position'] . ")";
+					} else {
+						$result[$street]['my_turn'] = "Моя очередь делать ставку первым";
+					}
+					break;
+				}
+			}
+		}
+
+		return json_encode($result, JSON_UNESCAPED_UNICODE);
+	}
+
+	function printShowdownCards() {
+		global $response;
+		if (empty($response['showdown'])) {
+			return json_encode(['error' => 'Нет данных.']);
+		}
+
+		$showdownData = [];
+
+		// Группируем карты по игрокам
+		foreach ($response['showdown'] as $showdown) {
+			$playerId = $showdown['player_id'];
+			$nickname = $showdown['nickname'];
+			$cards = $showdown['cards'];
+
+			if (!isset($showdownData[$playerId])) {
+				$showdownData[$playerId] = [
+					'player' => $nickname,
+					'cards' => []
+				];
+			}
+
+			$showdownData[$playerId]['cards'][] = $cards;
+		}
+
+		// Формируем итоговый JSON
+		$output = [
+			'showdown' => [
+				'players' => array_values($showdownData)
+			]
+		];
+
+		return json_encode($output, JSON_UNESCAPED_UNICODE);
+	}
+
+
+
+
 	$content = "
-Ты — профессиональный AI-анализатор покера.
-Твоя задача — проанализировать раздачу и дать точную рекомендацию для героя.
-Стадия турнира - {$input['stady']}.
+Ты — профессиональный AI-анализатор покера и генератор покерных комбинаций
+Ароанализируй покерные комбинации в формате [Карта1 Карта2 Карта3], пример: [Tc As 2h 6d Th]
+Твоя задача: проанализировать раздачу и дать точную рекомендацию для героя
+Стадия турнира: {$response['stady']}
+Текущая улица: {$response['current_street']}
+Дай покерный совет для руки [{$response['hero']['cards']}] на борде [{$board}]
+ID героя: {$response['hero']['id']}
+Никнейм героя: {$response['hero']['name']}
+Позиция героя: {$response['hero']['position']}
+Начальный стек героя: {$response['hero']['stack']} BB
+Статистика игроков: " . getCompactPlayersStats($response['players']) . "
+Общий банк: " . formatPotInfo($response['pots'], $response['current_street']) . "
+Действия игроков: " . formatStreetActions() . "
+Вскрытые карты игроков для анализа в предыдущих раздачах: " . printShowdownCards() . "
 Отвечай максимально коротко: [Действие] | [Краткое обоснование]
 Примеры корректных ответов:
 Raise 35 BB | Топ пара + nut flush дро (15 аутов)
@@ -557,7 +723,7 @@ Fold | Слабый кикер на опасном борде (A5 на QQ5)
 Call 12 BB | Средняя пара + pot odds 25% (остаток стека 120 BB)
 All-in 85 BB | Премиум пара (AA) против 3-бета
 Check | Нет эквити на монотонном борде
-Вот текущая раздача для анализа: $analysisData
+
 	";
 
 //	die(var_dump($content));
