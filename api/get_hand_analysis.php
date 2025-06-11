@@ -11,7 +11,7 @@ try {
 
 	// Debug input (uncomment for testing)
 	$input = [
-		'hand_id' => 1,
+		'hand_id' => 5,
 		'current_street' => 'river',
 		'hero_position' => 'SB',
 		'hero_id' => '999999',
@@ -456,22 +456,15 @@ try {
 	}
 
 	function getNextToAct($pdo, $handId, $currentStreet, $heroPosition) {
-		// 1. Получаем порядок позиций за столом
+		// Порядок позиций за столом
 		$positionsOrder = ['BTN', 'SB', 'BB', 'UTG', 'UTG+1', 'MP', 'HJ', 'CO'];
 
-		// 2. Получаем всех игроков, которые еще не сфолдили на текущей улице
-		$activePlayersStmt = $pdo->prepare("
+		// 1. Получаем всех игроков, которые делали действия в этой раздаче
+		$allPlayersStmt = $pdo->prepare("
         SELECT DISTINCT a.player_id, p.nickname, a.position 
         FROM actions a
         JOIN players p ON a.player_id = p.player_id
         WHERE a.hand_id = :hand_id
-        AND a.player_id NOT IN (
-            SELECT player_id 
-            FROM actions 
-            WHERE hand_id = :hand_id 
-            AND street = :street 
-            AND action_type = 'fold'
-        )
         ORDER BY 
             CASE a.position
                 WHEN 'BTN' THEN 1
@@ -485,76 +478,89 @@ try {
                 ELSE 9
             END
     ");
-		$activePlayersStmt->execute([
-			':hand_id' => $handId,
-			':street' => $currentStreet
-		]);
-		$activePlayers = $activePlayersStmt->fetchAll();
+		$allPlayersStmt->execute([':hand_id' => $handId]);
+		$allPlayers = $allPlayersStmt->fetchAll();
 
-		if (empty($activePlayers)) {
+		if (empty($allPlayers)) {
 			return null;
 		}
 
-		// 3. Получаем всех игроков, которые делали действия на текущей улице
-		$actedPlayersStmt = $pdo->prepare("
-        SELECT DISTINCT position 
+		// 2. Получаем ID всех сфолдивших игроков в этой раздаче
+		$foldedPlayersStmt = $pdo->prepare("
+        SELECT DISTINCT player_id 
+        FROM actions 
+        WHERE hand_id = :hand_id 
+        AND action_type = 'fold'
+    ");
+		$foldedPlayersStmt->execute([':hand_id' => $handId]);
+		$foldedPlayers = array_column($foldedPlayersStmt->fetchAll(), 'player_id');
+
+		// 3. Получаем активных игроков (кто не фолдил)
+		$activePlayers = array_filter($allPlayers, function($player) use ($foldedPlayers) {
+			return !in_array($player['player_id'], $foldedPlayers);
+		});
+
+		// 4. Если остался только герой - значит ход героя
+		if (count($activePlayers) == 1 && $activePlayers[0]['position'] == $heroPosition) {
+			return null;
+		}
+
+		// 5. Получаем последнее действие на текущей улице
+		$lastActionStmt = $pdo->prepare("
+        SELECT player_id, position 
         FROM actions 
         WHERE hand_id = :hand_id 
         AND street = :street
+        ORDER BY sequence_num DESC
+        LIMIT 1
     ");
-		$actedPlayersStmt->execute([':hand_id' => $handId, ':street' => $currentStreet]);
-		$actedPositions = array_column($actedPlayersStmt->fetchAll(), 'position');
+		$lastActionStmt->execute([':hand_id' => $handId, ':street' => $currentStreet]);
+		$lastAction = $lastActionStmt->fetch();
 
-		// 4. Если на текущей улице еще не было действий
-		if (empty($actedPositions)) {
-			// На префлопе начинаем с UTG, на постфлопе - с SB
-			$startPosition = ($currentStreet == 'preflop') ? 'UTG' : 'SB';
-
-			// Находим первого активного игрока после стартовой позиции
-			$startIndex = array_search($startPosition, $positionsOrder);
-			if ($startIndex === false) $startIndex = -1;
-
-			for ($i = 1; $i <= count($positionsOrder); $i++) {
-				$nextIndex = ($startIndex + $i) % count($positionsOrder);
-				$nextPosition = $positionsOrder[$nextIndex];
-
-				foreach ($activePlayers as $player) {
-					if ($player['position'] === $nextPosition) {
-						return $player;
-					}
-				}
-			}
-		} else {
-			// 5. Если действия были, находим последнего действовавшего
-			$lastActorStmt = $pdo->prepare("
-            SELECT a.position 
-            FROM actions a
-            WHERE a.hand_id = :hand_id 
-            AND a.street = :street
-            ORDER BY a.sequence_num DESC
-            LIMIT 1
-        ");
-			$lastActorStmt->execute([':hand_id' => $handId, ':street' => $currentStreet]);
-			$lastActor = $lastActorStmt->fetch();
-			$lastPosition = $lastActor['position'];
-
-			// 6. Находим следующего активного игрока после последнего действовавшего
+		// 6. Определяем стартовую позицию для поиска следующего игрока
+		$startIndex = 0;
+		if ($lastAction) {
+			// Начинаем поиск со следующей позиции после последнего действовавшего
+			$lastPosition = $lastAction['position'];
 			$startIndex = array_search($lastPosition, $positionsOrder);
 			if ($startIndex === false) $startIndex = -1;
+		} else {
+			// На префлопе начинаем с UTG, на постфлопе - с SB
+			$startPosition = ($currentStreet == 'preflop') ? 'UTG' : 'SB';
+			$startIndex = array_search($startPosition, $positionsOrder);
+			if ($startIndex === false) $startIndex = -1;
+		}
 
-			for ($i = 1; $i <= count($positionsOrder); $i++) {
-				$nextIndex = ($startIndex + $i) % count($positionsOrder);
-				$nextPosition = $positionsOrder[$nextIndex];
+		// 7. Ищем следующего активного игрока
+		for ($i = 1; $i <= count($positionsOrder); $i++) {
+			$nextIndex = ($startIndex + $i) % count($positionsOrder);
+			$nextPosition = $positionsOrder[$nextIndex];
 
-				foreach ($activePlayers as $player) {
-					if ($player['position'] === $nextPosition) {
-						// Проверяем, что этот игрок еще не действовал на текущей улице
-						if (!in_array($nextPosition, $actedPositions) ||
-							$nextPosition === $heroPosition) {
-							return $player;
-						}
-					}
+			// Если следующая позиция - это герой, возвращаем null (ход героя)
+			if ($nextPosition === $heroPosition) {
+				return null;
+			}
+
+			// Проверяем, есть ли активный игрок на этой позиции
+			foreach ($activePlayers as $player) {
+				if ($player['position'] === $nextPosition) {
+					return $player;
 				}
+			}
+
+			// Если игрок на этой позиции не найден среди активных, проверяем был ли он вообще в раздаче
+			$positionExists = false;
+			foreach ($allPlayers as $player) {
+				if ($player['position'] === $nextPosition) {
+					$positionExists = true;
+					break;
+				}
+			}
+
+			// Если позиция есть в раздаче, но игрок не активен (фолдил) - продолжаем поиск
+			// Если позиции нет в раздаче - возвращаем null
+			if (!$positionExists) {
+				return null;
 			}
 		}
 
