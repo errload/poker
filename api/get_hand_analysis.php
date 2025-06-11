@@ -12,8 +12,8 @@ try {
 	// Debug input (uncomment for testing)
 //	$input = [
 //		'hand_id' => 1,
-//		'current_street' => 'river',
-//		'hero_position' => 'MP',
+//		'current_street' => 'flop',
+//		'hero_position' => 'SB',
 //		'hero_id' => '999999',
 //		'hero_nickname' => 'Player999999',
 //		'stady' => 'early'
@@ -563,19 +563,89 @@ try {
 			});
 			usort($kickers, function($a, $b) { return $b['value'] - $a['value']; });
 
-			$topPair = in_array($pairRank, array_column($hole, 'rank'));
-			$weakKicker = $kickers[0]['value'] < 10;
+			// Определяем тип пары
+			$heroHoleRanks = array_column($hole, 'rank');
+			$boardRanks = array_column($board, 'rank');
+			$boardValues = array_column($board, 'value');
+			rsort($boardValues); // Сортируем борд по убыванию
+
+			$isPocketPair = count($hole) == 2 && $hole[0]['rank'] == $hole[1]['rank'] && $hole[0]['rank'] == $pairRank;
+			$isBoardPair = in_array($pairRank, $boardRanks);
+			$isTopPair = false;
+			$isSecondPair = false;
+			$isBottomPair = false;
+
+			if ($isPocketPair) {
+				// Для карманной пары определяем ее уровень относительно борда
+				$pocketPairValue = $hole[0]['value'];
+				$higherPairsOnBoard = 0;
+
+				foreach ($boardValues as $boardValue) {
+					if ($boardValue > $pocketPairValue) {
+						$higherPairsOnBoard++;
+					}
+				}
+
+				if ($higherPairsOnBoard >= 2) {
+					$pairLevel = 'third_pair';
+				} elseif ($higherPairsOnBoard == 1) {
+					$pairLevel = 'second_pair';
+				} else {
+					$pairLevel = 'top_pair';
+				}
+			} elseif ($isBoardPair) {
+				// Если пара на борде
+				if ($isPocketPair) {
+					// Для карманной пары сравниваем ее с картами на борде
+					if ($hole[0]['value'] > $board[0]['value']) {
+						$pairLevel = 'overpair';
+					} elseif ($hole[0]['value'] > $board[1]['value']) {
+						$pairLevel = 'top_pair';
+					} elseif ($hole[0]['value'] > $board[2]['value']) {
+						$pairLevel = 'second_pair';
+					} else {
+						$pairLevel = 'bottom_pair';
+					}
+					$description = 'Pocket pair of '.$pairRank.' ('.$pairLevel.')';
+				} elseif ($pairRank == $board[0]['rank']) {
+					$description = 'Top pair of '.$pairRank;
+				} elseif (isset($board[1]) && $pairRank == $board[1]['rank']) {
+					$description = 'Second pair of '.$pairRank;
+				} else {
+					$description = 'Weak pair of '.$pairRank;
+				}
+			} elseif (in_array($pairRank, $heroHoleRanks)) {
+				// Если пара состоит из одной карты руки и одной с борда
+				if ($pairRank == $board[0]['rank']) {
+					$isTopPair = true;
+				} else {
+					$isSecondPair = true;
+				}
+			}
+
+			$description = 'Pair of '.$pairRank;
+			if ($isPocketPair) {
+				$description .= ' (pocket pair - '.$pairLevel.')';
+			} elseif ($isTopPair) {
+				$description .= ' (top pair)';
+			} elseif ($isSecondPair) {
+				$description .= ' (second pair)';
+			} elseif ($isBottomPair) {
+				$description .= ' (bottom pair)';
+			} else {
+				$description .= ' (weak pair)';
+			}
 
 			$result = [
 				'strength' => 'pair',
-				'description' => 'Pair of '.$pairRank.($topPair ? ' (top pair)' : ' (weak pair)'),
+				'description' => $description,
 				'combination' => $pairCards,
 				'kickers' => array_slice($kickers, 0, 3),
 				'draws' => [],
 				'outs' => 0,
-				'nut_status' => $topPair ?
+				'nut_status' => $isTopPair ?
 					($kickers[0]['value'] >= 10 ? 'strong' : 'weak') :
-					'weak'
+					($isPocketPair ? ($pairLevel == 'top_pair' ? 'strong' : 'medium') : 'weak')
 			];
 			return $result;
 		}
@@ -798,21 +868,22 @@ try {
 	}
 
 	function calculatePotOdds($pdo, $handId, $street) {
-		// Total pot
+		// Total pot on current street
 		$stmt = $pdo->prepare("
-            SELECT SUM(amount) as total 
-            FROM actions 
-            WHERE hand_id = :hand_id AND street = :street
-        ");
+			SELECT SUM(amount) as total 
+			FROM actions 
+			WHERE hand_id = :hand_id AND street = :street
+		");
 		$stmt->execute([':hand_id' => $handId, ':street' => $street]);
 		$pot = $stmt->fetch()['total'] ?? 0;
 
-		// Current bet to call
+		// Current bet to call on current street
 		$stmt = $pdo->prepare("
-            SELECT MAX(amount) as max_bet 
-            FROM actions 
-            WHERE hand_id = :hand_id AND street = :street
-        ");
+			SELECT MAX(amount) as max_bet 
+			FROM actions 
+			WHERE hand_id = :hand_id AND street = :street 
+			AND action_type IN ('bet', 'raise', 'all-in')
+		");
 		$stmt->execute([':hand_id' => $handId, ':street' => $street]);
 		$toCall = $stmt->fetch()['max_bet'] ?? 0;
 
@@ -946,31 +1017,49 @@ try {
 	}
 
 	function isActionRequired($pdo, $handId, $street, $heroPos) {
-		// Check if there are bets on current street
+		// Check if this is a new street (no actions at all)
 		$stmt = $pdo->prepare("
-            SELECT COUNT(*) as bets 
-            FROM actions 
-            WHERE hand_id = :hand_id AND street = :street AND action_type IN ('bet', 'raise', 'all-in')
-        ");
+			SELECT COUNT(*) as actions 
+			FROM actions 
+			WHERE hand_id = :hand_id AND street = :street
+		");
 		$stmt->execute([':hand_id' => $handId, ':street' => $street]);
-		$hasBets = $stmt->fetch()['bets'] > 0;
+		$isNewStreet = $stmt->fetch()['actions'] == 0;
 
-		// Check if hero has acted on this street
+		// If new street - action is required only if hero is first to act
+		if ($isNewStreet) {
+			$firstToAct = ($street == 'preflop') ? 'UTG' : 'SB';
+			return $heroPos === $firstToAct;
+		}
+
+		// For existing streets - check if hero hasn't acted yet and there are bets
 		$stmt = $pdo->prepare("
-            SELECT COUNT(*) as actions 
-            FROM actions 
-            WHERE hand_id = :hand_id AND street = :street AND position = :position
-        ");
+			SELECT COUNT(*) as actions 
+			FROM actions 
+			WHERE hand_id = :hand_id AND street = :street AND position = :position
+		");
 		$stmt->execute([':hand_id' => $handId, ':street' => $street, ':position' => $heroPos]);
 		$hasActed = $stmt->fetch()['actions'] > 0;
 
-		return $hasBets && !$hasActed;
+		if (!$hasActed) {
+			$stmt = $pdo->prepare("
+				SELECT COUNT(*) as bets 
+				FROM actions 
+				WHERE hand_id = :hand_id AND street = :street AND action_type IN ('bet', 'raise', 'all-in')
+			");
+			$stmt->execute([':hand_id' => $handId, ':street' => $street]);
+			$hasBets = $stmt->fetch()['bets'] > 0;
+
+			return $hasBets;
+		}
+
+		return false;
 	}
 
-	function getLastAggressor($streetActions) {
+	function getLastAggressor($streetActions, $currentStreet) {
 		$lastAggressor = null;
 		foreach ($streetActions as $action) {
-			if ($action['is_aggressive']) {
+			if ($action['is_aggressive'] && $action['street'] === $currentStreet) {
 				$lastAggressor = [
 					'player_id' => $action['player_id'],
 					'player_name' => $action['player_nickname'],
@@ -1145,7 +1234,7 @@ try {
 					];
 				}, $actions),
 				'aggression_count' => count(array_filter($actions, function($a) { return $a['is_aggressive']; })),
-				'last_aggressor' => getLastAggressor($actions)
+				'last_aggressor' => getLastAggressor($actions, $street)
 			];
 		}, $actionsByStreet, array_keys($actionsByStreet)),
 		'showdown_history' => array_map(function($showdown) use ($pdo) {
@@ -1160,9 +1249,23 @@ try {
 		'hand_progress' => [
 			'street_sequence' => getStreetSequence($input['current_street']),
 			'next_to_act' => getNextToAct($pdo, $input['hand_id'], $input['current_street'], $input['hero_position']),
-			'action_required' => isActionRequired($pdo, $input['hand_id'], $input['current_street'], $input['hero_position'])
+			'action_required' => isActionRequired($pdo, $input['hand_id'], $input['current_street'], $input['hero_position']),
+			'is_new_street' => !isset($actionsByStreet[$input['current_street']]) || empty($actionsByStreet[$input['current_street']]),
+			'last_aggressor' => isset($actionsByStreet[$input['current_street']]) && !empty($actionsByStreet[$input['current_street']]) ?
+				getLastAggressor($actionsByStreet[$input['current_street']], $input['current_street'])
+				: null,
+			'available_actions' => [] // Определим ниже
 		]
 	];
+
+	// Определяем доступные действия
+	if ($response['hand_progress']['is_new_street']) {
+		// Если новая улица, можно Check или Bet
+		$response['hand_progress']['available_actions'] = ['Check', 'Bet', 'All-in'];
+	} else {
+		// Если уже были ставки, можно Fold/Call/Raise
+		$response['hand_progress']['available_actions'] = ['Fold', 'Call', 'Raise', 'All-in'];
+	}
 
 //	die(print_r($response));
 

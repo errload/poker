@@ -940,7 +940,7 @@ document
 				hero_nickname: 'Player' + document.querySelector('[name="position"][data-id="999999"]').dataset.id,
 				stady: document.querySelector('.line_content .radio:checked').value
 			})
-			document.querySelector('.line_result').textContent = result.data
+			document.querySelector('.line_result').textContent = result
 		} catch (e) {}
 
 		document.querySelector('.gto').disabled = false
