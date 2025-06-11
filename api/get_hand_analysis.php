@@ -13,7 +13,7 @@ try {
 	$input = [
 		'hand_id' => 5,
 		'current_street' => 'river',
-		'hero_position' => 'SB',
+		'hero_position' => 'MP',
 		'hero_id' => '999999',
 		'hero_nickname' => 'Player999999',
 		'stady' => 'early'
@@ -456,114 +456,90 @@ try {
 	}
 
 	function getNextToAct($pdo, $handId, $currentStreet, $heroPosition) {
-		// Порядок позиций за столом
 		$positionsOrder = ['BTN', 'SB', 'BB', 'UTG', 'UTG+1', 'MP', 'HJ', 'CO'];
+		$startPosition = ($currentStreet == 'preflop') ? 'UTG' : 'SB';
 
-		// 1. Получаем всех игроков, которые делали действия в этой раздаче
-		$allPlayersStmt = $pdo->prepare("
+		// 1. Получаем всех игроков в раздаче
+		$playersStmt = $pdo->prepare("
         SELECT DISTINCT a.player_id, p.nickname, a.position 
         FROM actions a
         JOIN players p ON a.player_id = p.player_id
         WHERE a.hand_id = :hand_id
-        ORDER BY 
-            CASE a.position
-                WHEN 'BTN' THEN 1
-                WHEN 'SB' THEN 2
-                WHEN 'BB' THEN 3
-                WHEN 'UTG' THEN 4
-                WHEN 'UTG+1' THEN 5
-                WHEN 'MP' THEN 6
-                WHEN 'HJ' THEN 7
-                WHEN 'CO' THEN 8
-                ELSE 9
-            END
     ");
-		$allPlayersStmt->execute([':hand_id' => $handId]);
-		$allPlayers = $allPlayersStmt->fetchAll();
+		$playersStmt->execute([':hand_id' => $handId]);
+		$allPlayers = $playersStmt->fetchAll();
 
-		if (empty($allPlayers)) {
-			return null;
-		}
+		if (empty($allPlayers)) return null;
 
-		// 2. Получаем ID всех сфолдивших игроков в этой раздаче
-		$foldedPlayersStmt = $pdo->prepare("
+		// 2. Получаем ID всех сфолдивших игроков
+		$foldedStmt = $pdo->prepare("
         SELECT DISTINCT player_id 
         FROM actions 
-        WHERE hand_id = :hand_id 
-        AND action_type = 'fold'
+        WHERE hand_id = :hand_id AND action_type = 'fold'
     ");
-		$foldedPlayersStmt->execute([':hand_id' => $handId]);
-		$foldedPlayers = array_column($foldedPlayersStmt->fetchAll(), 'player_id');
+		$foldedStmt->execute([':hand_id' => $handId]);
+		$foldedPlayers = array_column($foldedStmt->fetchAll(), 'player_id');
 
-		// 3. Получаем активных игроков (кто не фолдил)
-		$activePlayers = array_filter($allPlayers, function($player) use ($foldedPlayers) {
-			return !in_array($player['player_id'], $foldedPlayers);
-		});
-
-		// 4. Если остался только герой - значит ход героя
-		if (count($activePlayers) == 1 && $activePlayers[0]['position'] == $heroPosition) {
-			return null;
-		}
-
-		// 5. Получаем последнее действие на текущей улице
+		// 3. Получаем последнюю позицию, которая действовала на текущей улице
 		$lastActionStmt = $pdo->prepare("
-        SELECT player_id, position 
+        SELECT position 
         FROM actions 
-        WHERE hand_id = :hand_id 
-        AND street = :street
-        ORDER BY sequence_num DESC
+        WHERE hand_id = :hand_id AND street = :street
+        ORDER BY sequence_num DESC 
         LIMIT 1
     ");
 		$lastActionStmt->execute([':hand_id' => $handId, ':street' => $currentStreet]);
-		$lastAction = $lastActionStmt->fetch();
+		$lastPosition = $lastActionStmt->fetchColumn();
 
-		// 6. Определяем стартовую позицию для поиска следующего игрока
-		$startIndex = 0;
-		if ($lastAction) {
-			// Начинаем поиск со следующей позиции после последнего действовавшего
-			$lastPosition = $lastAction['position'];
-			$startIndex = array_search($lastPosition, $positionsOrder);
-			if ($startIndex === false) $startIndex = -1;
+		// 4. Если действий на улице еще не было — начинаем с начальной позиции
+		if (!$lastPosition) {
+			$nextPosition = $startPosition;
 		} else {
-			// На префлопе начинаем с UTG, на постфлопе - с SB
-			$startPosition = ($currentStreet == 'preflop') ? 'UTG' : 'SB';
-			$startIndex = array_search($startPosition, $positionsOrder);
-			if ($startIndex === false) $startIndex = -1;
+			// Ищем следующую позицию после последней
+			$currentIndex = array_search($lastPosition, $positionsOrder);
+			$nextIndex = ($currentIndex + 1) % count($positionsOrder);
+			$nextPosition = $positionsOrder[$nextIndex];
 		}
 
-		// 7. Ищем следующего активного игрока
-		for ($i = 1; $i <= count($positionsOrder); $i++) {
-			$nextIndex = ($startIndex + $i) % count($positionsOrder);
-			$nextPosition = $positionsOrder[$nextIndex];
+		// 5. Проверяем всех возможных следующих игроков (максимум 8 итераций)
+		$checkedPositions = [];
+		while (!in_array($nextPosition, $checkedPositions)) {
+			$checkedPositions[] = $nextPosition;
 
-			// Если следующая позиция - это герой, возвращаем null (ход героя)
-			if ($nextPosition === $heroPosition) {
-				return null;
-			}
-
-			// Проверяем, есть ли активный игрок на этой позиции
-			foreach ($activePlayers as $player) {
-				if ($player['position'] === $nextPosition) {
-					return $player;
-				}
-			}
-
-			// Если игрок на этой позиции не найден среди активных, проверяем был ли он вообще в раздаче
-			$positionExists = false;
+			// Проверяем, есть ли игрок на этой позиции
+			$playerFound = false;
+			$playerData = null;
 			foreach ($allPlayers as $player) {
 				if ($player['position'] === $nextPosition) {
-					$positionExists = true;
+					$playerFound = true;
+					$playerData = $player;
 					break;
 				}
 			}
 
-			// Если позиция есть в раздаче, но игрок не активен (фолдил) - продолжаем поиск
-			// Если позиции нет в раздаче - возвращаем null
-			if (!$positionExists) {
+			// Если игрок не найден → null (его еще не было в раздаче)
+			if (!$playerFound) {
 				return null;
 			}
+
+			// Если игрок фолдил → переходим к следующему
+			if (in_array($playerData['player_id'], $foldedPlayers)) {
+				$currentIndex = array_search($nextPosition, $positionsOrder);
+				$nextIndex = ($currentIndex + 1) % count($positionsOrder);
+				$nextPosition = $positionsOrder[$nextIndex];
+				continue;
+			}
+
+			// Если это герой → null
+			if ($playerData['position'] === $heroPosition) {
+				return null;
+			}
+
+			// Игрок найден, не фолдил, и это не герой → возвращаем его
+			return $playerData;
 		}
 
+		// Если прошли все позиции и не нашли подходящего игрока
 		return null;
 	}
 
