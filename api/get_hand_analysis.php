@@ -6,18 +6,18 @@ $response = ['success' => false, 'error' => null];
 
 try {
 	// Validate input
-	$input = json_decode(file_get_contents('php://input'), true);
-	if (!$input) throw new Exception('Invalid JSON input');
+//	$input = json_decode(file_get_contents('php://input'), true);
+//	if (!$input) throw new Exception('Invalid JSON input');
 
 	// Debug input (uncomment for testing)
-//	$input = [
-//		'hand_id' => 1,
-//		'current_street' => 'river',
-//		'hero_position' => 'MP',
-//		'hero_id' => '999999',
-//		'hero_nickname' => 'Player999999',
-//		'stady' => 'early'
-//	];
+	$input = [
+		'hand_id' => 2,
+		'current_street' => 'river',
+		'hero_position' => 'MP',
+		'hero_id' => '999999',
+		'hero_nickname' => 'Player999999',
+		'stady' => 'early'
+	];
 
 	$required = ['hand_id', 'current_street', 'hero_position'];
 	foreach ($required as $field) {
@@ -169,7 +169,7 @@ try {
 	$allPlayersStmt->execute();
 	$allPlayers = $allPlayersStmt->fetchAll();
 
-	// Helper functions for card analysis
+	// Улучшенная функция для парсинга карт
 	function parseCards($cardString) {
 		if (empty($cardString)) return [];
 
@@ -177,18 +177,27 @@ try {
 		$parts = preg_split('/\s+/', trim($cardString));
 
 		foreach ($parts as $card) {
-			if (preg_match('/^[2-9TJQKA][cdhs]$/i', $card)) {
+			if (preg_match('/^([2-9TJQKA])([cdhs])$/i', $card, $matches)) {
+				$rank = strtoupper($matches[1]);
+				$suit = strtolower($matches[2]);
 				$cards[] = [
-					'rank' => strtoupper(substr($card, 0, 1)),
-					'suit' => strtolower(substr($card, 1, 1)),
-					'full' => strtoupper($card)
+					'rank' => $rank,
+					'suit' => $suit,
+					'full' => $rank . $suit,
+					'value' => rankToValue($rank)
 				];
 			}
 		}
 
+		// Сортируем карты по значению (от старших к младшим)
+		usort($cards, function($a, $b) {
+			return $b['value'] - $a['value'];
+		});
+
 		return $cards;
 	}
 
+	// Функция для преобразования ранга в числовое значение
 	function rankToValue($rank) {
 		$values = [
 			'2' => 2, '3' => 3, '4' => 4, '5' => 5,
@@ -249,127 +258,511 @@ try {
 		return ['strength' => 'weak', 'description' => "Weak hand {$rank1}{$rank2}"];
 	}
 
+	// Полная функция оценки силы руки с учетом всех нюансов
 	function evaluateHandStrength($holeCards, $boardCards, $street) {
 		$hole = parseCards($holeCards);
 		$board = parseCards($boardCards);
 
-		if (count($hole) != 2 || empty($board)) {
-			return ['strength' => 'unknown', 'description' => 'Invalid hand/board'];
+		if (count($hole) != 2) {
+			return ['strength' => 'invalid', 'description' => 'Invalid hole cards'];
 		}
 
 		$allCards = array_merge($hole, $board);
+		if (count($allCards) < 5 && $street == 'river') {
+			return ['strength' => 'invalid', 'description' => 'Not enough cards'];
+		}
+
+		// Основные переменные для анализа
 		$ranks = array_column($allCards, 'rank');
 		$suits = array_column($allCards, 'suit');
+		$values = array_column($allCards, 'value');
+		$holeValues = array_column($hole, 'value');
 
-		// Basic evaluation - in a real app you'd want a proper hand evaluator
 		$rankCounts = array_count_values($ranks);
 		$suitCounts = array_count_values($suits);
+		arsort($rankCounts);
+		arsort($suitCounts);
 
-		// Check for flush
+		// Проверка комбинаций от старшей к младшей
+		$result = [
+			'strength' => 'high_card',
+			'description' => 'High Card',
+			'combination' => [],
+			'kickers' => [],
+			'draws' => [],
+			'outs' => 0,
+			'nut_status' => 'none'
+		];
+
+		// Проверка на флеш (5+ карт одной масти)
 		$flush = false;
+		$flushSuit = null;
+		$flushCards = [];
 		foreach ($suitCounts as $suit => $count) {
 			if ($count >= 5) {
 				$flush = true;
+				$flushSuit = $suit;
+				$flushCards = array_filter($allCards, function($card) use ($suit) {
+					return $card['suit'] === $suit;
+				});
+				usort($flushCards, function($a, $b) { return $b['value'] - $a['value']; });
 				break;
 			}
 		}
 
-		// Check for straight
-		$values = array_map('rankToValue', $ranks);
+		// Проверка на стрит (5 последовательных карт)
+		$straight = false;
+		$straightCards = [];
 		$uniqueValues = array_unique($values);
 		rsort($uniqueValues);
 
-		$straight = false;
-		if (count($uniqueValues) >= 5) {
-			for ($i = 0; $i <= count($uniqueValues) - 5; $i++) {
-				if ($uniqueValues[$i] - $uniqueValues[$i+4] == 4) {
+		// Проверка для обычного стрита (A-5-4-3-2)
+		if (in_array(14, $uniqueValues)) {
+			$uniqueValues[] = 1; // Добавляем младший туз для проверки стрита A-2-3-4-5
+		}
+
+		$uniqueValues = array_unique($uniqueValues);
+		sort($uniqueValues);
+
+		$straightLength = 1;
+		for ($i = 1; $i < count($uniqueValues); $i++) {
+			if ($uniqueValues[$i] == $uniqueValues[$i-1] + 1) {
+				$straightLength++;
+				if ($straightLength >= 5) {
 					$straight = true;
-					break;
+					$straightCards = array_slice($uniqueValues, $i-4, 5);
+					rsort($straightCards);
+				}
+			} else {
+				$straightLength = 1;
+			}
+		}
+
+		// Проверка на стрит-флеш и роял-флеш
+		if ($flush && $straight) {
+			$flushStraightCards = [];
+			$flushValues = array_column($flushCards, 'value');
+			$flushUniqueValues = array_unique($flushValues);
+			rsort($flushUniqueValues);
+
+			if (in_array(14, $flushUniqueValues)) {
+				$flushUniqueValues[] = 1;
+			}
+
+			$flushUniqueValues = array_unique($flushUniqueValues);
+			sort($flushUniqueValues);
+
+			$straightLength = 1;
+			for ($i = 1; $i < count($flushUniqueValues); $i++) {
+				if ($flushUniqueValues[$i] == $flushUniqueValues[$i-1] + 1) {
+					$straightLength++;
+					if ($straightLength >= 5) {
+						$flushStraightCards = array_slice($flushUniqueValues, $i-4, 5);
+						rsort($flushStraightCards);
+
+						// Проверка на роял-флеш
+						if ($flushStraightCards[0] == 14 && $flushStraightCards[4] == 10) {
+							$result = [
+								'strength' => 'royal_flush',
+								'description' => 'Royal Flush',
+								'combination' => array_slice($flushCards, 0, 5),
+								'kickers' => [],
+								'draws' => [],
+								'outs' => 0,
+								'nut_status' => 'absolute_nuts'
+							];
+							return $result;
+						}
+
+						// Обычный стрит-флеш
+						$result = [
+							'strength' => 'straight_flush',
+							'description' => 'Straight Flush ('.implode('-', $flushStraightCards).')',
+							'combination' => array_slice($flushCards, 0, 5),
+							'kickers' => [],
+							'draws' => [],
+							'outs' => 0,
+							'nut_status' => $flushStraightCards[0] == 14 ? 'absolute_nuts' : 'strong'
+						];
+						return $result;
+					}
+				} else {
+					$straightLength = 1;
 				}
 			}
 		}
 
-		// Determine hand strength
-		if ($flush && $straight) {
-			return ['strength' => 'straight_flush', 'description' => 'Straight Flush'];
-		} elseif (max($rankCounts) >= 4) {
-			return ['strength' => 'four_of_a_kind', 'description' => 'Four of a Kind'];
-		} elseif (count(array_filter($rankCounts, function($v) { return $v >= 3; })) >= 1 &&
-			count(array_filter($rankCounts, function($v) { return $v >= 2; })) >= 2) {
-			return ['strength' => 'full_house', 'description' => 'Full House'];
-		} elseif ($flush) {
-			return ['strength' => 'flush', 'description' => 'Flush'];
-		} elseif ($straight) {
-			return ['strength' => 'straight', 'description' => 'Straight'];
-		} elseif (max($rankCounts) >= 3) {
-			return ['strength' => 'three_of_a_kind', 'description' => 'Three of a Kind'];
-		} elseif (count(array_filter($rankCounts, function($v) { return $v >= 2; })) >= 2) {
-			return ['strength' => 'two_pair', 'description' => 'Two Pair'];
-		} elseif (max($rankCounts) >= 2) {
-			return ['strength' => 'pair', 'description' => 'Pair'];
-		} else {
-			return ['strength' => 'high_card', 'description' => 'High Card'];
+		// Проверка на каре (4 карты одного ранга)
+		if (max($rankCounts) >= 4) {
+			$quadRank = array_search(4, $rankCounts);
+			$quadCards = array_filter($allCards, function($card) use ($quadRank) {
+				return $card['rank'] === $quadRank;
+			});
+			$kickers = array_filter($allCards, function($card) use ($quadRank) {
+				return $card['rank'] !== $quadRank;
+			});
+			usort($kickers, function($a, $b) { return $b['value'] - $a['value']; });
+
+			$result = [
+				'strength' => 'four_of_a_kind',
+				'description' => 'Four of a Kind ('.$quadRank.')',
+				'combination' => $quadCards,
+				'kickers' => array_slice($kickers, 0, 1),
+				'draws' => [],
+				'outs' => 0,
+				'nut_status' => $quadRank == 'A' ? 'absolute_nuts' : 'strong'
+			];
+			return $result;
 		}
+
+		// Проверка на фулл-хаус (3+2)
+		$trips = [];
+		$pairs = [];
+		foreach ($rankCounts as $rank => $count) {
+			if ($count >= 3) $trips[] = $rank;
+			if ($count >= 2) $pairs[] = $rank;
+		}
+		$trips = array_unique($trips);
+		$pairs = array_unique($pairs);
+		rsort($trips);
+		rsort($pairs);
+
+		if (count($trips) >= 1 && (count($pairs) >= 2 || count($trips) >= 2)) {
+			$fullHouseTrips = $trips[0];
+			$fullHousePair = null;
+
+			// Ищем самую старшую пару, отличную от тройки
+			foreach ($pairs as $pair) {
+				if ($pair != $fullHouseTrips) {
+					$fullHousePair = $pair;
+					break;
+				}
+			}
+
+			// Если не нашли пару, но есть вторая тройка - используем ее для пары
+			if (!$fullHousePair && count($trips) >= 2) {
+				$fullHousePair = $trips[1];
+			}
+
+			if ($fullHousePair) {
+				$tripCards = array_filter($allCards, function($card) use ($fullHouseTrips) {
+					return $card['rank'] === $fullHouseTrips;
+				});
+				$pairCards = array_filter($allCards, function($card) use ($fullHousePair) {
+					return $card['rank'] === $fullHousePair;
+				});
+
+				$result = [
+					'strength' => 'full_house',
+					'description' => 'Full House ('.$fullHouseTrips.' over '.$fullHousePair.')',
+					'combination' => array_merge(array_slice($tripCards, 0, 3), array_slice($pairCards, 0, 2)),
+					'kickers' => [],
+					'draws' => [],
+					'outs' => 0,
+					'nut_status' => $fullHouseTrips == 'A' ? 'absolute_nuts' : 'strong'
+				];
+				return $result;
+			}
+		}
+
+		// Проверка на флеш
+		if ($flush) {
+			$flushCards = array_slice($flushCards, 0, 5);
+			$nutFlush = $flushCards[0]['value'] == 14 && in_array(13, array_column($flushCards, 'value'));
+
+			$result = [
+				'strength' => 'flush',
+				'description' => 'Flush ('.$flushSuit.')',
+				'combination' => $flushCards,
+				'kickers' => [],
+				'draws' => [],
+				'outs' => 0,
+				'nut_status' => $nutFlush ? 'nut_flush' : ($flushCards[0]['value'] >= 12 ? 'strong' : 'weak')
+			];
+			return $result;
+		}
+
+		// Проверка на стрит
+		if ($straight) {
+			$nutStraight = $straightCards[0] == 14;
+
+			$result = [
+				'strength' => 'straight',
+				'description' => 'Straight ('.implode('-', $straightCards).')',
+				'combination' => [],
+				'kickers' => [],
+				'draws' => [],
+				'outs' => 0,
+				'nut_status' => $nutStraight ? 'nut_straight' : ($straightCards[0] >= 10 ? 'strong' : 'weak')
+			];
+			return $result;
+		}
+
+		// Проверка на тройку
+		if (max($rankCounts) >= 3) {
+			$tripRank = array_search(3, $rankCounts);
+			$tripCards = array_filter($allCards, function($card) use ($tripRank) {
+				return $card['rank'] === $tripRank;
+			});
+			$kickers = array_filter($allCards, function($card) use ($tripRank) {
+				return $card['rank'] !== $tripRank;
+			});
+			usort($kickers, function($a, $b) { return $b['value'] - $a['value']; });
+
+			$result = [
+				'strength' => 'three_of_a_kind',
+				'description' => 'Three of a Kind ('.$tripRank.')',
+				'combination' => $tripCards,
+				'kickers' => array_slice($kickers, 0, 2),
+				'draws' => [],
+				'outs' => 0,
+				'nut_status' => $tripRank == 'A' ? 'strong' : 'medium'
+			];
+			return $result;
+		}
+
+		// Проверка на две пары
+		if (count(array_filter($rankCounts, function($v) { return $v >= 2; })) >= 2) {
+			$pairRanks = array_keys(array_filter($rankCounts, function($v) { return $v >= 2; }));
+			rsort($pairRanks);
+			$topPair = $pairRanks[0];
+			$secondPair = $pairRanks[1];
+
+			$topPairCards = array_filter($allCards, function($card) use ($topPair) {
+				return $card['rank'] === $topPair;
+			});
+			$secondPairCards = array_filter($allCards, function($card) use ($secondPair) {
+				return $card['rank'] === $secondPair;
+			});
+			$kickers = array_filter($allCards, function($card) use ($topPair, $secondPair) {
+				return $card['rank'] !== $topPair && $card['rank'] !== $secondPair;
+			});
+			usort($kickers, function($a, $b) { return $b['value'] - $a['value']; });
+
+			$result = [
+				'strength' => 'two_pair',
+				'description' => 'Two Pair ('.$topPair.' and '.$secondPair.')',
+				'combination' => array_merge(array_slice($topPairCards, 0, 2), array_slice($secondPairCards, 0, 2)),
+				'kickers' => array_slice($kickers, 0, 1),
+				'draws' => [],
+				'outs' => 0,
+				'nut_status' => ($topPair == 'A' || $topPair == 'K') ? 'strong' : 'medium'
+			];
+			return $result;
+		}
+
+		// Проверка на пару
+		if (max($rankCounts) >= 2) {
+			$pairRank = array_search(2, $rankCounts);
+			$pairCards = array_filter($allCards, function($card) use ($pairRank) {
+				return $card['rank'] === $pairRank;
+			});
+			$kickers = array_filter($allCards, function($card) use ($pairRank) {
+				return $card['rank'] !== $pairRank;
+			});
+			usort($kickers, function($a, $b) { return $b['value'] - $a['value']; });
+
+			$topPair = in_array($pairRank, array_column($hole, 'rank'));
+			$weakKicker = $kickers[0]['value'] < 10;
+
+			$result = [
+				'strength' => 'pair',
+				'description' => 'Pair of '.$pairRank.($topPair ? ' (top pair)' : ' (weak pair)'),
+				'combination' => $pairCards,
+				'kickers' => array_slice($kickers, 0, 3),
+				'draws' => [],
+				'outs' => 0,
+				'nut_status' => $topPair ?
+					($kickers[0]['value'] >= 10 ? 'strong' : 'weak') :
+					'weak'
+			];
+			return $result;
+		}
+
+		// Если ничего не найдено - старшая карта
+		usort($allCards, function($a, $b) { return $b['value'] - $a['value']; });
+		$result = [
+			'strength' => 'high_card',
+			'description' => 'High Card ('.$allCards[0]['rank'].')',
+			'combination' => [],
+			'kickers' => array_slice($allCards, 1, 4),
+			'draws' => [],
+			'outs' => 0,
+			'nut_status' => 'weak'
+		];
+
+		// Анализ дро и потенциалов
+		if ($street != 'river' && count($board) >= 3) {
+			$draws = [];
+			$outs = 0;
+
+			// Проверка на флеш-дро
+			$holeSuits = array_column($hole, 'suit');
+			$holeSuitCounts = array_count_values($holeSuits);
+			$flushDrawSuit = null;
+
+			foreach ($suitCounts as $suit => $count) {
+				if ($count == 4 && isset($holeSuitCounts[$suit])) {
+					$flushDrawSuit = $suit;
+					break;
+				}
+			}
+
+			if ($flushDrawSuit) {
+				$missingCards = array_filter($hole, function($card) use ($flushDrawSuit) {
+					return $card['suit'] === $flushDrawSuit;
+				});
+
+				$draws[] = 'flush_draw';
+				$outs += 9; // 9 карт одной масти осталось в колоде
+
+				// Проверка на нут-флеш дро
+				$nutFlushDraw = false;
+				if (in_array(14, array_column($missingCards, 'value'))) {
+					$nutFlushDraw = true;
+					$draws[] = 'nut_flush_draw';
+				}
+			}
+
+			// Проверка на стрит-дро
+			$allValues = array_unique(array_merge($values, $holeValues));
+			sort($allValues);
+
+			// Проверка на открытое стрит-дро (8 аутов)
+			for ($i = 0; $i < count($allValues) - 3; $i++) {
+				if ($allValues[$i+3] - $allValues[$i] == 4) {
+					$draws[] = 'open_ended_straight_draw';
+					$outs += 8;
+					break;
+				}
+			}
+
+			// Проверка на гатшот (4 аутов)
+			for ($i = 0; $i < count($allValues) - 2; $i++) {
+				if ($allValues[$i+2] - $allValues[$i] == 3) {
+					$draws[] = 'gutshot_straight_draw';
+					$outs += 4;
+					break;
+				}
+			}
+
+			// Проверка на бэкдор-флеш (очень слабое дро)
+			if (!$flushDrawSuit) {
+				foreach ($suitCounts as $suit => $count) {
+					if ($count == 3 && isset($holeSuitCounts[$suit])) {
+						$draws[] = 'backdoor_flush_draw';
+						$outs += 0.5; // Очень мало аутов
+						break;
+					}
+				}
+			}
+
+			// Обновляем результат с информацией о дро
+			if (!empty($draws)) {
+				$result['draws'] = $draws;
+				$result['outs'] = $outs;
+				$result['description'] .= ' + '.implode(', ', $draws).' ('.$outs.' outs)';
+			}
+		}
+
+		return $result;
 	}
 
+	// Улучшенная функция для анализа текстуры борда
 	function analyzeBoardTexture($boardCards) {
 		$board = parseCards($boardCards);
-		if (count($board) < 3) return 'preflop';
+		if (count($board) < 3) return ['texture' => 'preflop', 'danger' => 0];
 
-		$textures = [];
 		$ranks = array_column($board, 'rank');
 		$suits = array_column($board, 'suit');
+		$values = array_column($board, 'value');
 
-		// Check for flush potential
+		$textures = [];
+		$danger = 0;
+
+		// Анализ мастей (флеш-потенциал)
 		$suitCounts = array_count_values($suits);
-		if (max($suitCounts) >= 3) {
-			$textures[] = 'monotone';
+		$flushPotential = max($suitCounts) >= 3;
+		if ($flushPotential) {
+			$textures[] = 'flush_possible';
+			$danger += 25;
+
+			if (max($suitCounts) == 4) {
+				$textures[] = 'flush_draw';
+				$danger += 15;
+			}
 		}
 
-		// Check for pairs
+		// Анализ пар и сетов
 		$rankCounts = array_count_values($ranks);
-		$pairs = array_filter($rankCounts, function($v) { return $v >= 2; });
-		if (!empty($pairs)) {
+		$paired = count(array_filter($rankCounts, function($v) { return $v >= 2; })) > 0;
+		if ($paired) {
 			$textures[] = 'paired';
-			if (count($pairs) >= 2) {
+			$danger += 20;
+
+			if (max($rankCounts) == 3) {
+				$textures[] = 'trips_possible';
+				$danger += 30;
+			}
+
+			if (count(array_filter($rankCounts, function($v) { return $v >= 2; })) >= 2) {
 				$textures[] = 'multi_paired';
+				$danger += 15;
 			}
 		}
 
-		// Check for connectedness
-		$values = array_map('rankToValue', $ranks);
-		rsort($values);
-		$connected = false;
-		for ($i = 0; $i < count($values) - 1; $i++) {
-			if ($values[$i] - $values[$i+1] <= 2) {
-				$connected = true;
-				break;
+		// Анализ стрит-потенциала
+		$uniqueValues = array_unique($values);
+		sort($uniqueValues);
+		$straightPotential = false;
+		$straightDraw = false;
+
+		// Проверка на возможные стриты
+		if (count($uniqueValues) >= 3) {
+			$gaps = [];
+			for ($i = 1; $i < count($uniqueValues); $i++) {
+				$gap = $uniqueValues[$i] - $uniqueValues[$i-1];
+				if ($gap > 1) $gaps[] = $gap;
+			}
+
+			$totalGap = array_sum($gaps);
+			$neededCards = count($gaps) + 1;
+
+			if ($totalGap <= 4 && $neededCards <= 2) {
+				$straightPotential = true;
+				$textures[] = 'straight_possible';
+				$danger += 20;
+
+				if ($totalGap <= 2 && $neededCards == 1) {
+					$straightDraw = true;
+					$textures[] = 'straight_draw';
+					$danger += 15;
+				}
 			}
 		}
 
-		if ($connected) {
-			$textures[] = 'connected';
-		}
-
-		// Check for high cards
-		$highCards = array_filter($values, function($v) { return $v >= 10; });
+		// Анализ высоких карт
+		$highCards = array_filter($values, function($v) { return $v >= 11; });
 		if (count($highCards) >= 2) {
 			$textures[] = 'high_cards';
+			$danger += 15;
 		}
 
-		return !empty($textures) ? implode(', ', $textures) : 'neutral';
+		// Определение общего уровня опасности
+		$danger = min($danger, 100);
+		$textureDescription = !empty($textures) ? implode(', ', $textures) : 'neutral';
+
+		return [
+			'texture' => $textureDescription,
+			'danger' => $danger,
+			'is_wet' => $flushPotential || $straightPotential,
+			'is_dry' => !$flushPotential && !$straightPotential && !$paired
+		];
 	}
 
 	function calculateBoardDanger($boardCards) {
 		$texture = analyzeBoardTexture($boardCards);
-		$danger = 0;
-
-		if (strpos($texture, 'monotone') !== false) $danger += 30;
-		if (strpos($texture, 'paired') !== false) $danger += 20;
-		if (strpos($texture, 'connected') !== false) $danger += 25;
-		if (strpos($texture, 'high_cards') !== false) $danger += 15;
-
-		return min($danger, 100);
+		return $texture['danger'] ?? 0; // Возвращаем уровень опасности из анализа текстуры
 	}
 
 	function calculateEffectiveStack($heroStack, $players) {
@@ -635,6 +1028,21 @@ try {
 		}
 	}
 
+	function evaluateShowdownHand($showdownCards, $handId, $pdo) {
+		// Получаем карты на столе для этой раздачи
+		$stmt = $pdo->prepare("SELECT board FROM hands WHERE hand_id = :hand_id");
+		$stmt->execute([':hand_id' => $handId]);
+		$boardCards = $stmt->fetchColumn();
+
+		// Если нет карт на столе (например, все сфолдили префлоп), оцениваем только карты игрока
+		if (empty($boardCards)) {
+			return evaluateHandStrength($showdownCards, '', 'river');
+		}
+
+		// Оцениваем комбинацию с учетом карт на столе
+		return evaluateHandStrength($showdownCards, $boardCards, 'river');
+	}
+
 	// Prepare response
 	$response = [
 		'success' => true,
@@ -733,13 +1141,13 @@ try {
 				'last_aggressor' => getLastAggressor($actions)
 			];
 		}, $actionsByStreet, array_keys($actionsByStreet)),
-		'showdown' => array_map(function($showdown) {
+		'showdown' => array_map(function($showdown) use ($pdo) {
 			return [
 				'player_id' => $showdown['player_id'],
 				'player_name' => $showdown['nickname'],
 				'hand_id' => $showdown['hand_id'],
 				'cards' => parseCards($showdown['cards']),
-				'hand_strength' => evaluateHandStrength($showdown['cards'], '', 'river')
+				'hand_strength' => evaluateShowdownHand($showdown['cards'], $showdown['hand_id'], $pdo)
 			];
 		}, $showdownInfo),
 		'hand_progress' => [
