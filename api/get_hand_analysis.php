@@ -12,8 +12,8 @@ try {
 	// Debug input (uncomment for testing)
 	$input = [
 		'hand_id' => 1,
-		'current_street' => 'preflop',
-		'hero_position' => 'MP',
+		'current_street' => 'river',
+		'hero_position' => 'SB',
 		'hero_id' => '999999',
 		'hero_nickname' => 'Player999999',
 		'stady' => 'early'
@@ -455,23 +455,110 @@ try {
 		return array_slice($streets, 0, $currentIndex + 1);
 	}
 
-	function getNextToAct($pdo, $handId, $currentStreet) {
-		$stmt = $pdo->prepare("
-            SELECT a.player_id, p.nickname, a.position 
+	function getNextToAct($pdo, $handId, $currentStreet, $heroPosition) {
+		// 1. Получаем порядок позиций за столом
+		$positionsOrder = ['BTN', 'SB', 'BB', 'UTG', 'UTG+1', 'MP', 'HJ', 'CO'];
+
+		// 2. Получаем всех игроков, которые еще не сфолдили на текущей улице
+		$activePlayersStmt = $pdo->prepare("
+        SELECT DISTINCT a.player_id, p.nickname, a.position 
+        FROM actions a
+        JOIN players p ON a.player_id = p.player_id
+        WHERE a.hand_id = :hand_id
+        AND a.player_id NOT IN (
+            SELECT player_id 
+            FROM actions 
+            WHERE hand_id = :hand_id 
+            AND street = :street 
+            AND action_type = 'fold'
+        )
+        ORDER BY 
+            CASE a.position
+                WHEN 'BTN' THEN 1
+                WHEN 'SB' THEN 2
+                WHEN 'BB' THEN 3
+                WHEN 'UTG' THEN 4
+                WHEN 'UTG+1' THEN 5
+                WHEN 'MP' THEN 6
+                WHEN 'HJ' THEN 7
+                WHEN 'CO' THEN 8
+                ELSE 9
+            END
+    ");
+		$activePlayersStmt->execute([
+			':hand_id' => $handId,
+			':street' => $currentStreet
+		]);
+		$activePlayers = $activePlayersStmt->fetchAll();
+
+		if (empty($activePlayers)) {
+			return null;
+		}
+
+		// 3. Получаем всех игроков, которые делали действия на текущей улице
+		$actedPlayersStmt = $pdo->prepare("
+        SELECT DISTINCT position 
+        FROM actions 
+        WHERE hand_id = :hand_id 
+        AND street = :street
+    ");
+		$actedPlayersStmt->execute([':hand_id' => $handId, ':street' => $currentStreet]);
+		$actedPositions = array_column($actedPlayersStmt->fetchAll(), 'position');
+
+		// 4. Если на текущей улице еще не было действий
+		if (empty($actedPositions)) {
+			// На префлопе начинаем с UTG, на постфлопе - с SB
+			$startPosition = ($currentStreet == 'preflop') ? 'UTG' : 'SB';
+
+			// Находим первого активного игрока после стартовой позиции
+			$startIndex = array_search($startPosition, $positionsOrder);
+			if ($startIndex === false) $startIndex = -1;
+
+			for ($i = 1; $i <= count($positionsOrder); $i++) {
+				$nextIndex = ($startIndex + $i) % count($positionsOrder);
+				$nextPosition = $positionsOrder[$nextIndex];
+
+				foreach ($activePlayers as $player) {
+					if ($player['position'] === $nextPosition) {
+						return $player;
+					}
+				}
+			}
+		} else {
+			// 5. Если действия были, находим последнего действовавшего
+			$lastActorStmt = $pdo->prepare("
+            SELECT a.position 
             FROM actions a
-            JOIN players p ON a.player_id = p.player_id
-            WHERE a.hand_id = :hand_id AND a.street = :street
+            WHERE a.hand_id = :hand_id 
+            AND a.street = :street
             ORDER BY a.sequence_num DESC
             LIMIT 1
         ");
-		$stmt->execute([':hand_id' => $handId, ':street' => $currentStreet]);
-		$lastAction = $stmt->fetch();
+			$lastActorStmt->execute([':hand_id' => $handId, ':street' => $currentStreet]);
+			$lastActor = $lastActorStmt->fetch();
+			$lastPosition = $lastActor['position'];
 
-		return $lastAction ? [
-			'player_id' => $lastAction['player_id'],
-			'player_name' => $lastAction['nickname'],
-			'position' => $lastAction['position']
-		] : null;
+			// 6. Находим следующего активного игрока после последнего действовавшего
+			$startIndex = array_search($lastPosition, $positionsOrder);
+			if ($startIndex === false) $startIndex = -1;
+
+			for ($i = 1; $i <= count($positionsOrder); $i++) {
+				$nextIndex = ($startIndex + $i) % count($positionsOrder);
+				$nextPosition = $positionsOrder[$nextIndex];
+
+				foreach ($activePlayers as $player) {
+					if ($player['position'] === $nextPosition) {
+						// Проверяем, что этот игрок еще не действовал на текущей улице
+						if (!in_array($nextPosition, $actedPositions) ||
+							$nextPosition === $heroPosition) {
+							return $player;
+						}
+					}
+				}
+			}
+		}
+
+		return null;
 	}
 
 	function isActionRequired($pdo, $handId, $street, $heroPos) {
@@ -675,7 +762,7 @@ try {
 		}, $showdownInfo),
 		'hand_progress' => [
 			'street_sequence' => getStreetSequence($input['current_street']),
-			'next_to_act' => getNextToAct($pdo, $input['hand_id'], $input['current_street']),
+			'next_to_act' => getNextToAct($pdo, $input['hand_id'], $input['current_street'], $input['hero_position']),
 			'action_required' => isActionRequired($pdo, $input['hand_id'], $input['current_street'], $input['hero_position'])
 		],
 		'meta' => [
