@@ -6,18 +6,18 @@ $response = ['success' => false, 'error' => null];
 
 try {
 	// Validate input
-//	$input = json_decode(file_get_contents('php://input'), true);
-//	if (!$input) throw new Exception('Invalid JSON input');
+	$input = json_decode(file_get_contents('php://input'), true);
+	if (!$input) throw new Exception('Invalid JSON input');
 
 	// Debug input (uncomment for testing)
-	$input = [
-		'hand_id' => 1,
-		'current_street' => 'river',
-		'hero_position' => 'MP',
-		'hero_id' => '999999',
-		'hero_nickname' => 'Player999999',
-		'stady' => 'early'
-	];
+//	$input = [
+//		'hand_id' => 1,
+//		'current_street' => 'river',
+//		'hero_position' => 'MP',
+//		'hero_id' => '999999',
+//		'hero_nickname' => 'Player999999',
+//		'stady' => 'early'
+//	];
 
 	$required = ['hand_id', 'current_street', 'hero_position'];
 	foreach ($required as $field) {
