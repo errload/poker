@@ -163,6 +163,7 @@ try {
             last_seen, 
             created_at
         FROM players
+        WHERE hands_played >= 10
         ORDER BY last_seen DESC
         LIMIT 100
     ");
@@ -1169,7 +1170,7 @@ try {
 		]
 	];
 
-	die(print_r($response));
+//	die(print_r($response));
 
 	$response = json_encode($response, JSON_UNESCAPED_UNICODE);
 	$content = "
@@ -1181,6 +1182,8 @@ try {
 		All-in 85 BB | Премиум пара (AA) против 3-бета
 		$response
 	";
+
+//	die(print_r($content));
 
 	// Send to AI for analysis
 	$api_key = 'sk-JBDhoWZZwZSn8q2xmqmi9zETz12StFzC';
