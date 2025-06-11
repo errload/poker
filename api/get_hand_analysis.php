@@ -11,7 +11,7 @@ try {
 
 	// Debug input (uncomment for testing)
 	$input = [
-		'hand_id' => 2,
+		'hand_id' => 1,
 		'current_street' => 'river',
 		'hero_position' => 'MP',
 		'hero_id' => '999999',
@@ -775,17 +775,25 @@ try {
 		return min($heroStack, $minStack);
 	}
 
-	function calculateHeroPotCommitment($pdo, $handId, $heroId) {
+	function calculateHeroPotCommitment($pdo, $handId, $heroId, $heroStack) {
 		if (empty($heroId)) return 0;
 
 		$stmt = $pdo->prepare("
-            SELECT SUM(amount) as total 
-            FROM actions 
-            WHERE hand_id = :hand_id AND player_id = :player_id
-        ");
+			SELECT SUM(amount) as total 
+			FROM actions 
+			WHERE hand_id = :hand_id AND player_id = :player_id
+		");
 		$stmt->execute([':hand_id' => $handId, ':player_id' => $heroId]);
 		$result = $stmt->fetch();
-		return $result['total'] ?? 0;
+		$totalCommitted = $result['total'] ?? 0;
+
+		// Рассчитываем текущий стек как начальный стек минус все ставки
+		$currentStack = $heroStack - $totalCommitted;
+
+		return [
+			'total_committed' => $totalCommitted,
+			'current_stack' => $currentStack
+		];
 	}
 
 	function calculatePotOdds($pdo, $handId, $street) {
@@ -1064,7 +1072,7 @@ try {
 			'position' => $heroInfo['position'],
 			'stack' => $handInfo['hero_stack'],
 			'effective_stack' => calculateEffectiveStack($handInfo['hero_stack'], $currentHandPlayers),
-			'pot_commitment' => calculateHeroPotCommitment($pdo, $input['hand_id'], $heroInfo['id'])
+			'pot_commitment' => calculateHeroPotCommitment($pdo, $input['hand_id'], $heroInfo['id'], $handInfo['hero_stack'])
 		],
 		'players' => array_map(function($player) use ($currentHandPlayers, $input) {
 			$inCurrentHand = false;
