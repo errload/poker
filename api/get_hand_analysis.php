@@ -11,7 +11,7 @@ try {
 
 	// Debug input (uncomment for testing)
 	$input = [
-		'hand_id' => 5,
+		'hand_id' => 1,
 		'current_street' => 'river',
 		'hero_position' => 'MP',
 		'hero_id' => '999999',
@@ -55,13 +55,13 @@ try {
 
 	// 2. Get showdown information for this hand only
 	$showdownStmt = $pdo->prepare("
-        SELECT s.player_id, p.nickname, s.hand_id, s.cards 
-        FROM showdown s
-        JOIN players p ON s.player_id = p.player_id
-        WHERE s.hand_id = :hand_id
-        ORDER BY s.created_at DESC
-    ");
-	$showdownStmt->execute([':hand_id' => $input['hand_id']]);
+    SELECT s.player_id, p.nickname, s.hand_id, s.cards 
+    FROM showdown s
+    JOIN players p ON s.player_id = p.player_id
+    ORDER BY s.created_at DESC
+    LIMIT 100  -- Ограничение для безопасности (можно убрать или изменить)
+");
+	$showdownStmt->execute();
 	$showdownInfo = $showdownStmt->fetchAll();
 
 	// 3. Get players in current hand with their positions
@@ -461,11 +461,11 @@ try {
 
 		// 1. Получаем всех игроков в раздаче
 		$playersStmt = $pdo->prepare("
-        SELECT DISTINCT a.player_id, p.nickname, a.position 
-        FROM actions a
-        JOIN players p ON a.player_id = p.player_id
-        WHERE a.hand_id = :hand_id
-    ");
+			SELECT DISTINCT a.player_id, p.nickname, a.position 
+			FROM actions a
+			JOIN players p ON a.player_id = p.player_id
+			WHERE a.hand_id = :hand_id
+		");
 		$playersStmt->execute([':hand_id' => $handId]);
 		$allPlayers = $playersStmt->fetchAll();
 
@@ -473,21 +473,21 @@ try {
 
 		// 2. Получаем ID всех сфолдивших игроков
 		$foldedStmt = $pdo->prepare("
-        SELECT DISTINCT player_id 
-        FROM actions 
-        WHERE hand_id = :hand_id AND action_type = 'fold'
-    ");
+			SELECT DISTINCT player_id 
+			FROM actions 
+			WHERE hand_id = :hand_id AND action_type = 'fold'
+		");
 		$foldedStmt->execute([':hand_id' => $handId]);
 		$foldedPlayers = array_column($foldedStmt->fetchAll(), 'player_id');
 
 		// 3. Получаем последнюю позицию, которая действовала на текущей улице
 		$lastActionStmt = $pdo->prepare("
-        SELECT position 
-        FROM actions 
-        WHERE hand_id = :hand_id AND street = :street
-        ORDER BY sequence_num DESC 
-        LIMIT 1
-    ");
+			SELECT position 
+			FROM actions 
+			WHERE hand_id = :hand_id AND street = :street
+			ORDER BY sequence_num DESC 
+			LIMIT 1
+		");
 		$lastActionStmt->execute([':hand_id' => $handId, ':street' => $currentStreet]);
 		$lastPosition = $lastActionStmt->fetchColumn();
 
