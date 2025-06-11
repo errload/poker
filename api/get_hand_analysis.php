@@ -6,18 +6,18 @@ $response = ['success' => false, 'error' => null];
 
 try {
 	// Validate input
-//	$input = json_decode(file_get_contents('php://input'), true);
-//	if (!$input) throw new Exception('Invalid JSON input');
+	$input = json_decode(file_get_contents('php://input'), true);
+	if (!$input) throw new Exception('Invalid JSON input');
 
 	// Debug input (uncomment for testing)
-	$input = [
-		'hand_id' => 1,
-		'current_street' => 'river',
-		'hero_position' => 'MP',
-		'hero_id' => '999999',
-		'hero_nickname' => 'Player999999',
-		'stady' => 'early'
-	];
+//	$input = [
+//		'hand_id' => 1,
+//		'current_street' => 'river',
+//		'hero_position' => 'MP',
+//		'hero_id' => '999999',
+//		'hero_nickname' => 'Player999999',
+//		'stady' => 'early'
+//	];
 
 	$required = ['hand_id', 'current_street', 'hero_position'];
 	foreach ($required as $field) {
@@ -1117,9 +1117,7 @@ try {
 					'turn_aggression' => $player['turn_aggression'] ?? 0,
 					'river_aggression' => $player['river_aggression'] ?? 0
 				],
-				'stats_reliable' => ($player['hands_played'] ?? 0) >= 50,
-				'tendencies' => analyzePlayerTendencies($player),
-				'last_seen' => $player['last_seen'] ?? null
+				'tendencies' => analyzePlayerTendencies($player)
 			];
 		}, $allPlayers),
 		'pot' => [
@@ -1150,23 +1148,19 @@ try {
 				'last_aggressor' => getLastAggressor($actions)
 			];
 		}, $actionsByStreet, array_keys($actionsByStreet)),
-		'showdown' => array_map(function($showdown) use ($pdo) {
+		'showdown_history' => array_map(function($showdown) use ($pdo) {
 			return [
-				'player_id' => $showdown['player_id'],
 				'player_name' => $showdown['nickname'],
-				'hand_id' => $showdown['hand_id'],
+				'historical_hand_id' => $showdown['hand_id'],
 				'cards' => parseCards($showdown['cards']),
-				'hand_strength' => evaluateShowdownHand($showdown['cards'], $showdown['hand_id'], $pdo)
+				'hand_strength' => evaluateShowdownHand($showdown['cards'], $showdown['hand_id'], $pdo),
+				'note' => 'Исторические данные для оценки диапазона'
 			];
 		}, $showdownInfo),
 		'hand_progress' => [
 			'street_sequence' => getStreetSequence($input['current_street']),
 			'next_to_act' => getNextToAct($pdo, $input['hand_id'], $input['current_street'], $input['hero_position']),
 			'action_required' => isActionRequired($pdo, $input['hand_id'], $input['current_street'], $input['hero_position'])
-		],
-		'meta' => [
-			'timestamp' => date('Y-m-d H:i:s'),
-			'hand_date' => $handInfo['created_at'] ?? null
 		]
 	];
 
@@ -1180,6 +1174,10 @@ try {
 		Fold | Слабый кикер на опасном борде (A5 на QQ5)
 		Call 12 BB | Средняя пара + pot odds 25% (остаток стека 120 BB)
 		All-in 85 BB | Премиум пара (AA) против 3-бета
+		Важные указания:
+		- 'showdown_history' содержит только ИСТОРИЧЕСКИЕ данные (прошлые вскрытия игроков), а не их текущие карты в этой раздаче
+		- Используй эти данные только для оценки диапазонов оппонентов, но не как факт их текущих карт
+		- В текущей раздаче карты оппонентов неизвестны, кроме карт героя
 		$response
 	";
 
