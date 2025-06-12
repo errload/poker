@@ -470,6 +470,7 @@ try {
 		if ($flush) {
 			$flushCards = array_slice($flushCards, 0, 5);
 			$nutFlush = $flushCards[0]['value'] == 14 && in_array(13, array_column($flushCards, 'value'));
+			$hasHigherCards = (max(array_column($board, 'value')) > $flushCards[0]['value']);
 
 			$result = [
 				'strength' => 'flush',
@@ -478,7 +479,8 @@ try {
 				'kickers' => [],
 				'draws' => [],
 				'outs' => 0,
-				'nut_status' => $nutFlush ? 'nut_flush' : ($flushCards[0]['value'] >= 12 ? 'strong' : 'weak')
+				'nut_status' => $nutFlush ? 'nut_flush' :
+					($hasHigherCards ? 'weak' : 'strong')
 			];
 			return $result;
 		}
@@ -486,6 +488,7 @@ try {
 		// Проверка на стрит
 		if ($straight) {
 			$nutStraight = $straightCards[0] == 14;
+			$isVulnerable = ($straightCards[0] < 12 && count(array_unique($straightCards)) == 5);
 
 			$result = [
 				'strength' => 'straight',
@@ -494,7 +497,8 @@ try {
 				'kickers' => [],
 				'draws' => [],
 				'outs' => 0,
-				'nut_status' => $nutStraight ? 'nut_straight' : ($straightCards[0] >= 10 ? 'strong' : 'weak')
+				'nut_status' => $nutStraight ? 'nut_straight' :
+					($isVulnerable ? 'medium' : 'strong')
 			];
 			return $result;
 		}
@@ -517,7 +521,8 @@ try {
 				'kickers' => array_slice($kickers, 0, 2),
 				'draws' => [],
 				'outs' => 0,
-				'nut_status' => $tripRank == 'A' ? 'strong' : 'medium'
+				'nut_status' => ($tripRank == 'A') ? 'strong' :
+					(max(array_column($board, 'value')) > $tripRank ? 'medium' : 'strong')
 			];
 			return $result;
 		}
@@ -540,6 +545,7 @@ try {
 			});
 			usort($kickers, function($a, $b) { return $b['value'] - $a['value']; });
 
+			$isStrong = ($topPair == 'A' || $topPair == 'K') && ($secondPair == 'Q' || $secondPair == 'J');
 			$result = [
 				'strength' => 'two_pair',
 				'description' => 'Two Pair ('.$topPair.' and '.$secondPair.')',
@@ -547,7 +553,8 @@ try {
 				'kickers' => array_slice($kickers, 0, 1),
 				'draws' => [],
 				'outs' => 0,
-				'nut_status' => ($topPair == 'A' || $topPair == 'K') ? 'strong' : 'medium'
+				'nut_status' => $isStrong ? 'strong' :
+					(max(array_column($board, 'value')) > $topPair ? 'medium' : 'strong')
 			];
 			return $result;
 		}
@@ -645,7 +652,10 @@ try {
 				'outs' => 0,
 				'nut_status' => $isTopPair ?
 					($kickers[0]['value'] >= 10 ? 'strong' : 'weak') :
-					($isPocketPair ? ($pairLevel == 'top_pair' ? 'strong' : 'medium') : 'weak')
+					($isPocketPair ?
+						($pairLevel == 'top_pair' ? 'strong' :
+							($pairLevel == 'second_pair' ? 'medium' : 'weak')) :
+						'weak')
 			];
 			return $result;
 		}
@@ -685,7 +695,8 @@ try {
 				});
 
 				$draws[] = 'flush_draw';
-				$outs += 9; // 9 карт одной масти осталось в колоде
+				$highCardInSuit = max(array_column($hole, 'value')) >= 10;
+				$outs += $highCardInSuit ? 9 : 7; // Меньше аутов, если нет старших карт
 
 				// Проверка на нут-флеш дро
 				$nutFlushDraw = false;
@@ -747,38 +758,69 @@ try {
 		$ranks = array_column($board, 'rank');
 		$suits = array_column($board, 'suit');
 		$values = array_column($board, 'value');
+		rsort($values); // Сортируем по убыванию
 
 		$textures = [];
-		$danger = 0;
-
-		// Анализ мастей (флеш-потенциал)
-		$suitCounts = array_count_values($suits);
-		$flushPotential = max($suitCounts) >= 3;
-		if ($flushPotential) {
-			$textures[] = 'flush_possible';
-			$danger += 25;
-
-			if (max($suitCounts) == 4) {
-				$textures[] = 'flush_draw';
-				$danger += 15;
-			}
-		}
+		$baseDanger = 0;
+		$multipliers = 1.0;
 
 		// Анализ пар и сетов
 		$rankCounts = array_count_values($ranks);
 		$paired = count(array_filter($rankCounts, function($v) { return $v >= 2; })) > 0;
+
 		if ($paired) {
-			$textures[] = 'paired';
-			$danger += 20;
+			$pairCount = count(array_filter($rankCounts, function($v) { return $v >= 2; }));
+			$maxPair = max($rankCounts);
 
-			if (max($rankCounts) == 3) {
-				$textures[] = 'trips_possible';
-				$danger += 30;
+			if ($maxPair == 3) {
+				$textures[] = 'trips_on_board';
+				$baseDanger += 70; // Сет на борде - очень опасно
+			} elseif ($maxPair == 2) {
+				if ($pairCount >= 2) {
+					$textures[] = 'multi_paired';
+					$baseDanger += 60; // Две пары на борде
+				} else {
+					$textures[] = 'paired';
+					$baseDanger += 40; // Одна пара на борде
+				}
 			}
+		}
 
-			if (count(array_filter($rankCounts, function($v) { return $v >= 2; })) >= 2) {
-				$textures[] = 'multi_paired';
-				$danger += 15;
+		// Анализ силы карт на борде относительно возможных рук героя
+		$topBoardCard = $values[0];
+		$secondBoardCard = $values[1] ?? 0;
+
+		// Опасность высоких карт зависит от их ранга
+		$highCardsDanger = 0;
+		foreach ($values as $value) {
+			if ($value >= 14) $highCardsDanger += 20; // Тузы
+			elseif ($value >= 12) $highCardsDanger += 15; // K,Q
+			elseif ($value >= 10) $highCardsDanger += 10; // J,T
+		}
+
+		if ($highCardsDanger > 0) {
+			$textures[] = 'high_cards';
+			$baseDanger += $highCardsDanger;
+
+			// Дополнительная опасность, если есть две сильные карты
+			if ($topBoardCard >= 12 && $secondBoardCard >= 10) {
+				$baseDanger += 15;
+				$multipliers *= 1.3;
+			}
+		}
+
+		// Анализ флеш-потенциала
+		$suitCounts = array_count_values($suits);
+		$flushPotential = max($suitCounts) >= 3;
+
+		if ($flushPotential) {
+			$textures[] = 'flush_possible';
+			$baseDanger += 25;
+
+			if (max($suitCounts) == 4) {
+				$textures[] = 'flush_draw';
+				$baseDanger += 20;
+				$multipliers *= 1.5; // Увеличиваем общую опасность при флеш-дро
 			}
 		}
 
@@ -786,7 +828,6 @@ try {
 		$uniqueValues = array_unique($values);
 		sort($uniqueValues);
 		$straightPotential = false;
-		$straightDraw = false;
 
 		// Проверка на возможные стриты
 		if (count($uniqueValues) >= 3) {
@@ -802,12 +843,12 @@ try {
 			if ($totalGap <= 4 && $neededCards <= 2) {
 				$straightPotential = true;
 				$textures[] = 'straight_possible';
-				$danger += 20;
+				$baseDanger += 30;
 
 				if ($totalGap <= 2 && $neededCards == 1) {
-					$straightDraw = true;
 					$textures[] = 'straight_draw';
-					$danger += 15;
+					$baseDanger += 25;
+					$multipliers *= 1.3;
 				}
 			}
 		}
@@ -816,18 +857,30 @@ try {
 		$highCards = array_filter($values, function($v) { return $v >= 11; });
 		if (count($highCards) >= 2) {
 			$textures[] = 'high_cards';
-			$danger += 15;
+			$baseDanger += 15;
 		}
 
-		// Определение общего уровня опасности
-		$danger = min($danger, 100);
+		// Дополнительные факторы опасности
+		$isWet = $flushPotential || $straightPotential || $paired;
+		$isDry = !$isWet;
+
+		// Увеличиваем опасность для сухих бордов с высокими картами
+		if ($isDry && $topBoardCard >= 12) {
+			$baseDanger += 20;
+			$textures[] = 'high_card_dry';
+		}
+
+		// Итоговый расчет опасности с учетом множителей
+		$danger = min(round($baseDanger * $multipliers), 100);
 		$textureDescription = !empty($textures) ? implode(', ', $textures) : 'neutral';
 
 		return [
 			'texture' => $textureDescription,
 			'danger' => $danger,
-			'is_wet' => $flushPotential || $straightPotential,
-			'is_dry' => !$flushPotential && !$straightPotential && !$paired
+			'is_wet' => $isWet,
+			'is_dry' => $isDry,
+			'top_board_card' => $topBoardCard,
+			'second_board_card' => $secondBoardCard
 		];
 	}
 
@@ -1281,6 +1334,13 @@ try {
 		- 'showdown_history' содержит только ИСТОРИЧЕСКИЕ данные (прошлые вскрытия игроков), а не их текущие карты в этой раздаче
 		- Используй эти данные только для оценки диапазонов оппонентов, но не как факт их текущих карт
 		- В текущей раздаче карты оппонентов неизвестны, кроме карт героя
+		- НЕ КОЛЛИРУЙ с третьей парой или хуже
+		- ФОЛДИ средние пары на мульти-парных бордах
+		- АГРЕССИВНО играй только с топ-парой+ или сильными дро
+		- Учитывай danger_level борда:
+		* 0-30: безопасно
+		* 31-60: осторожно
+		* 61-100: очень опасно
 		$response
 	";
 
