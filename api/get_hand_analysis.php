@@ -11,9 +11,9 @@ try {
 
 	// Debug input (uncomment for testing)
 //	$input = [
-//		'hand_id' => 1,
+//		'hand_id' => 2,
 //		'current_street' => 'flop',
-//		'hero_position' => 'SB',
+//		'hero_position' => 'BTN',
 //		'hero_id' => '999999',
 //		'hero_nickname' => 'Player999999',
 //		'stady' => 'early'
@@ -614,6 +614,16 @@ try {
 						$pairLevel = 'bottom_pair';
 					}
 					$description = 'Pocket pair of '.$pairRank.' ('.$pairLevel.')';
+					$nutStatus = 'medium';
+					if ($pairRank == 'A' || $pairRank == 'K') {
+						$nutStatus = 'strong';
+					} elseif ($pairRank >= 'J') {
+						$nutStatus = 'medium_strong';
+					}
+
+					$result['nut_status'] = $nutStatus;
+					$result['description'] = $description;
+					$result['is_pocket_pair'] = true; // Добавляем флаг карманной пары
 				} elseif ($pairRank == $board[0]['rank']) {
 					$description = 'Top pair of '.$pairRank;
 				} elseif (isset($board[1]) && $pairRank == $board[1]['rank']) {
@@ -657,19 +667,38 @@ try {
 							($pairLevel == 'second_pair' ? 'medium' : 'weak')) :
 						'weak')
 			];
+
+			if ($street == 'turn') {
+				// Уменьшаем силу дро, так как осталась только одна карта
+				foreach ($result['draws'] as &$draw) {
+					if (strpos($draw, 'draw') !== false) {
+						$result['outs'] = max(1, round($result['outs'] * 0.5));
+					}
+				}
+			}
+
 			return $result;
 		}
 
 		// Если ничего не найдено - старшая карта
 		usort($allCards, function($a, $b) { return $b['value'] - $a['value']; });
+		$heroCards = array_column($hole, 'rank');
+		$boardCards = array_column($board, 'rank');
+
+		// Проверяем, есть ли у героя карта, совпадающая со старшей на борде
+		$hasTopCard = in_array($allCards[0]['rank'], $heroCards);
+
 		$result = [
 			'strength' => 'high_card',
-			'description' => 'High Card ('.$allCards[0]['rank'].')',
+			'description' => $hasTopCard ?
+				'High Card ('.$allCards[0]['rank'].')' :
+				'No Pair (best board card: '.$allCards[0]['rank'].')',
 			'combination' => [],
 			'kickers' => array_slice($allCards, 1, 4),
 			'draws' => [],
 			'outs' => 0,
-			'nut_status' => 'weak'
+			'nut_status' => 'weak',
+			'has_pair_with_board' => false // Явно указываем, что нет пары с бордом
 		];
 
 		// Анализ дро и потенциалов
@@ -743,7 +772,13 @@ try {
 			if (!empty($draws)) {
 				$result['draws'] = $draws;
 				$result['outs'] = $outs;
-				$result['description'] .= ' + '.implode(', ', $draws).' ('.$outs.' outs)';
+
+				// Обновляем описание в зависимости от наличия пары
+				if ($result['has_pair_with_board']) {
+					$result['description'] .= ' + '.implode(', ', $draws).' ('.$outs.' outs)';
+				} else {
+					$result['description'] = 'No Pair + '.implode(', ', $draws).' ('.$outs.' outs)';
+				}
 			}
 		}
 
@@ -793,9 +828,9 @@ try {
 		// Опасность высоких карт зависит от их ранга
 		$highCardsDanger = 0;
 		foreach ($values as $value) {
-			if ($value >= 14) $highCardsDanger += 20; // Тузы
-			elseif ($value >= 12) $highCardsDanger += 15; // K,Q
-			elseif ($value >= 10) $highCardsDanger += 10; // J,T
+			if ($value >= 14) $highCardsDanger += 25; // Увеличено с 20
+			elseif ($value >= 12) $highCardsDanger += 20; // Увеличено с 15 (K,Q)
+			elseif ($value >= 10) $highCardsDanger += 15; // Увеличено с 10 (J,T)
 		}
 
 		if ($highCardsDanger > 0) {
@@ -807,6 +842,10 @@ try {
 				$baseDanger += 15;
 				$multipliers *= 1.3;
 			}
+		}
+
+		if ($paired && $topBoardCard >= 12) {
+			$baseDanger += 15; // Дополнительная опасность если пара с высокими картами
 		}
 
 		// Анализ флеш-потенциала
@@ -855,23 +894,55 @@ try {
 
 		// Анализ высоких карт
 		$highCards = array_filter($values, function($v) { return $v >= 11; });
-		if (count($highCards) >= 2) {
-			$textures[] = 'high_cards';
-			$baseDanger += 15;
+		$highCardCount = count($highCards);
+		if ($highCardCount >= 2) {
+			$baseDanger += ($highCardCount * 10); // 10% за каждую высокую карту
+
+			// Добавляем тег только если его еще нет
+			if (!in_array('high_cards', $textures)) {
+				$textures[] = 'high_cards';
+			}
+
+			// Дополнительная опасность для двух сильных карт
+			if ($topBoardCard >= 12 && $secondBoardCard >= 10) {
+				$baseDanger += 15;
+				$multipliers *= 1.3;
+			}
 		}
 
 		// Дополнительные факторы опасности
 		$isWet = $flushPotential || $straightPotential || $paired;
 		$isDry = !$isWet;
 
-		// Увеличиваем опасность для сухих бордов с высокими картами
 		if ($isDry && $topBoardCard >= 12) {
 			$baseDanger += 20;
-			$textures[] = 'high_card_dry';
+			if (!in_array('high_card_dry', $textures)) {
+				$textures[] = 'high_card_dry';
+			}
+		}
+
+		if ($straightPotential) {
+			// Только для флопа и терна учитываем полные дро
+			if (count($board) <= 4) { // флоп или терн
+				if ($totalGap <= 4 && $neededCards <= 2) {
+					$straightPotential = true;
+					$textures[] = 'straight_possible';
+					$baseDanger += 30;
+
+					if ($totalGap <= 2 && $neededCards == 1) {
+						$textures[] = 'straight_draw';
+						$baseDanger += 25;
+						$multipliers *= 1.3;
+					}
+				}
+			} else {
+				// Для ривера стрит-дро уже неактуальны
+				$baseDanger += 10; // минимальная опасность
+			}
 		}
 
 		// Итоговый расчет опасности с учетом множителей
-		$danger = min(round($baseDanger * $multipliers), 100);
+		$danger = min(round($baseDanger * $multipliers), 85);
 		$textureDescription = !empty($textures) ? implode(', ', $textures) : 'neutral';
 
 		return [
@@ -1111,15 +1182,22 @@ try {
 
 	function getLastAggressor($streetActions, $currentStreet) {
 		$lastAggressor = null;
+		$maxBet = 0;
+
 		foreach ($streetActions as $action) {
 			if ($action['is_aggressive'] && $action['street'] === $currentStreet) {
-				$lastAggressor = [
-					'player_id' => $action['player_id'],
-					'player_name' => $action['player_nickname'],
-					'position' => $action['position'],
-					'action_type' => $action['action_type'],
-					'amount' => $action['amount']
-				];
+				$betSize = (float)$action['amount'];
+				if ($betSize >= $maxBet) {
+					$maxBet = $betSize;
+					$lastAggressor = [
+						'player_id' => $action['player_id'],
+						'player_name' => $action['player_nickname'],
+						'position' => $action['position'],
+						'action_type' => $action['action_type'],
+						'amount' => $action['amount'],
+						'bet_size_relative' => $maxBet > 0 ? round($betSize / $maxBet, 2) : 0
+					];
+				}
 			}
 		}
 		return $lastAggressor;
@@ -1215,7 +1293,9 @@ try {
 			'position' => $heroInfo['position'],
 			'stack' => $handInfo['hero_stack'],
 			'effective_stack' => calculateEffectiveStack($handInfo['hero_stack'], $currentHandPlayers),
-			'pot_commitment' => calculateHeroPotCommitment($pdo, $input['hand_id'], $heroInfo['id'], $handInfo['hero_stack'])
+			'pot_commitment' => calculateHeroPotCommitment($pdo, $input['hand_id'], $heroInfo['id'], $handInfo['hero_stack']),
+			'is_pocket_pair' => true,
+			'relative_strength' => 'medium_strong'
 		],
 		'players' => array_map(function($player) use ($currentHandPlayers, $input) {
 			$inCurrentHand = false;
@@ -1330,17 +1410,18 @@ try {
 		Fold | Слабый кикер на опасном борде (A5 на QQ5)
 		Call 12 BB | Средняя пара + pot odds 25% (остаток стека 120 BB)
 		All-in 85 BB | Премиум пара (AA) против 3-бета
-		Важные указания:
+		Важные правила:
 		- 'showdown_history' содержит только ИСТОРИЧЕСКИЕ данные (прошлые вскрытия игроков), а не их текущие карты в этой раздаче
 		- Используй эти данные только для оценки диапазонов оппонентов, но не как факт их текущих карт
 		- В текущей раздаче карты оппонентов неизвестны, кроме карт героя
-		- НЕ КОЛЛИРУЙ с третьей парой или хуже
-		- ФОЛДИ средние пары на мульти-парных бордах
-		- АГРЕССИВНО играй только с топ-парой+ или сильными дро
-		- Учитывай danger_level борда:
-		* 0-30: безопасно
-		* 31-60: осторожно
-		* 61-100: очень опасно
+		- На ривере и терне не учитывай дро (только готовые руки)
+		- Если статистики игрока < 10 рук - не делай предположений о его стиле
+		- Оллин после пассивной игры = очень сильный сигнал
+		- На бордах с высокими картами (K,Q,J) средние пары слабее
+		- Если danger_level > 50 - будь осторожен с medium strength hands
+		- Всегда учитывай bet_size_relative (большие ставки = сильные руки)
+		- Учитывай позицию: ранняя позиция = сильнее диапазон
+		- Всегда указывай конкретный размер ставки (если не Fold/Check)
 		$response
 	";
 
