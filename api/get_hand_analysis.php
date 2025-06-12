@@ -1437,7 +1437,7 @@ try {
 	curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
 	curl_setopt($ch, CURLOPT_POST, true);
 	curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-		'model' => 'gpt-4o-mini',
+		'model' => 'gpt-4.1-mini',
 		'messages' => [[ 'role' => 'user', 'content' => $content ]],
 		'temperature' => 0,
 		'top_p' => 1
