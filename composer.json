@@ -1,0 +1,17 @@
+{
+    "require-dev": {
+        "phpunit/phpunit": "^11.5"
+    },
+
+    "autoload": {
+        "psr-4": {
+            "FourBet\\": "src/"
+        }
+    },
+
+    "autoload-dev": {
+        "psr-4": {
+            "FourBet\\Tests\\": "tests/"
+        }
+    }
+}

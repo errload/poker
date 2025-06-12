@@ -1,5 +1,7 @@
 <?php
 
+namespace FourBet;
+
 class HandEvaluator
 {
 	private const RANK_VALUES = [
@@ -38,7 +40,7 @@ class HandEvaluator
 		return $result;
 	}
 
-	private static function parseCards(string $cardString): array
+	public static function parseCards(string $cardString): array
 	{
 		if (empty($cardString)) return [];
 
@@ -66,7 +68,7 @@ class HandEvaluator
 		return $cards;
 	}
 
-	private static function evaluatePreflopHand(array $holeCards): array
+	public static function evaluatePreflopHand(array $holeCards): array
 	{
 		$rank1 = $holeCards[0]['rank'];
 		$rank2 = $holeCards[1]['rank'];
@@ -114,7 +116,7 @@ class HandEvaluator
 		return ['strength' => 'weak', 'description' => "Weak hand {$rank1}{$rank2}"];
 	}
 
-	private static function evaluateCombination(array $allCards, array $holeCards, array $boardCards): array
+	public static function evaluateCombination(array $allCards, array $holeCards, array $boardCards): array
 	{
 		$ranks = array_column($allCards, 'rank');
 		$suits = array_column($allCards, 'suit');
@@ -156,7 +158,7 @@ class HandEvaluator
 		return self::checkHighCard($allCards, $holeCards, $boardCards);
 	}
 
-	private static function checkFlush(array $allCards, array $suits, array $suitCounts, array $holeCards, array $boardCards): ?array
+	public static function checkFlush(array $allCards, array $suits, array $suitCounts, array $holeCards, array $boardCards): ?array
 	{
 		$flushSuit = null;
 		$flushCards = [];
@@ -186,7 +188,7 @@ class HandEvaluator
 		];
 	}
 
-	private static function checkStraight(array $allCards, array $values): ?array
+	public static function checkStraight(array $allCards, array $values): ?array
 	{
 		$uniqueValues = array_unique($values);
 		rsort($uniqueValues);
@@ -227,7 +229,7 @@ class HandEvaluator
 		];
 	}
 
-	private static function checkQuads(array $allCards, array $rankCounts): ?array
+	public static function checkQuads(array $allCards, array $rankCounts): ?array
 	{
 		if (max($rankCounts) < 4) return null;
 
@@ -249,7 +251,7 @@ class HandEvaluator
 		];
 	}
 
-	private static function checkFullHouse(array $allCards, array $rankCounts): ?array
+	public static function checkFullHouse(array $allCards, array $rankCounts): ?array
 	{
 		$trips = [];
 		$pairs = [];
@@ -298,7 +300,7 @@ class HandEvaluator
 		];
 	}
 
-	private static function checkTrips(array $allCards, array $rankCounts, array $holeCards, array $boardCards): ?array
+	public static function checkTrips(array $allCards, array $rankCounts, array $holeCards, array $boardCards): ?array
 	{
 		if (max($rankCounts) < 3) return null;
 
@@ -321,7 +323,7 @@ class HandEvaluator
 		];
 	}
 
-	private static function checkTwoPair(array $allCards, array $rankCounts, array $holeCards, array $boardCards): ?array
+	public static function checkTwoPair(array $allCards, array $rankCounts, array $holeCards, array $boardCards): ?array
 	{
 		if (count(array_filter($rankCounts, function($v) { return $v >= 2; })) < 2) {
 			return null;
@@ -355,7 +357,7 @@ class HandEvaluator
 		];
 	}
 
-	private static function checkPair(array $allCards, array $rankCounts, array $holeCards, array $boardCards): ?array
+	public static function checkPair(array $allCards, array $rankCounts, array $holeCards, array $boardCards): ?array
 	{
 		if (max($rankCounts) < 2) return null;
 
@@ -440,7 +442,7 @@ class HandEvaluator
 		];
 	}
 
-	private static function checkHighCard(array $allCards, array $holeCards, array $boardCards): array
+	public static function checkHighCard(array $allCards, array $holeCards, array $boardCards): array
 	{
 		usort($allCards, function($a, $b) { return $b['value'] - $a['value']; });
 		$heroCards = array_column($holeCards, 'rank');
@@ -458,7 +460,7 @@ class HandEvaluator
 		];
 	}
 
-	private static function evaluateDraws(array $holeCards, array $boardCards): array
+	public static function evaluateDraws(array $holeCards, array $boardCards): array
 	{
 		$allCards = array_merge($holeCards, $boardCards);
 		$ranks = array_column($allCards, 'rank');
