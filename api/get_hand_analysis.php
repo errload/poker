@@ -15,7 +15,7 @@ try {
 
 	// Debug input (uncomment for testing)
 	$input = [
-		'hand_id' => 2,
+		'hand_id' => 7,
 		'current_street' => 'flop',
 		'hero_position' => 'BTN',
 		'hero_id' => '999999',
