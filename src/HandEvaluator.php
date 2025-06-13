@@ -184,8 +184,8 @@ class HandEvaluator
 				$handType = $isSuited ? 'Medium suited' : 'Marginal offsuit';
 			}
 			else {
-				$strength = 'marginal';
-				$handType = 'Marginal high';
+				$strength = $isSuited ? 'speculative' : 'marginal';
+				$handType = $isSuited ? 'Speculative suited' : 'Marginal offsuit';
 			}
 
 			return [
@@ -202,19 +202,43 @@ class HandEvaluator
 		// Спекулятивные одномастные руки (Axs, коннекторы)
 		if ($isSpeculativeSuited) {
 			$handName = $value1 > $value2 ? "{$rank1}{$rank2}" : "{$rank2}{$rank1}";
-			$type = ($rank1 === 'A' || $rank2 === 'A') ? 'Axs' : 'Suited connector';
-			return ['strength' => 'speculative', 'description' => "{$type} {$handName}s"];
+			if ($rank1 === 'A' || $rank2 === 'A') {
+				return ['strength' => 'speculative', 'description' => "Speculative suited {$handName}s"];
+			}
+		}
+
+		// Остальные одномастные руки
+		$highRanks = ['K', 'Q', 'J'];
+		if ($isSuited) {
+			$handName = $value1 > $value2 ? "{$rank1}{$rank2}" : "{$rank2}{$rank1}";
+
+			// Проверка на коннекторы
+			$isConnector = abs($value1 - $value2) <= 1;
+			$isBroadway = ($value1 >= 10 && $value2 >= 10);
+			$isMarginal =
+				(in_array($rank1, $highRanks) && $value2 >= 7 && $value2 < 10) ||
+				(in_array($rank2, $highRanks) && $value1 >= 7 && $value1 < 10);
+
+			if ($isConnector) {
+				if ($isBroadway) {
+					return ['strength' => 'speculative', 'description' => "Speculative suited {$handName}s"];
+				} else {
+					return ['strength' => 'marginal', 'description' => "Marginal suited {$handName}s"];
+				}
+			}
+
+			// Проверка на маргинальные одномастные руки (K9s-K7s, Q9s-Q7s, J9s-J7s)
+			if ($isMarginal) {
+				return ['strength' => 'marginal', 'description' => "Marginal suited {$handName}s"];
+			}
+
+			// Все остальные одномастные руки (T2s, 93s)
+			return ['strength' => 'weak', 'description' => "Weak suited {$handName}s"];
 		}
 
 		// Слабые пары (66-22)
 		if ($isWeakPair) {
 			return ['strength' => 'weak', 'description' => "Weak pair {$rank1}{$rank1}"];
-		}
-
-		// Остальные одномастные руки
-		if ($isSuited) {
-			$handName = $value1 > $value2 ? "{$rank1}{$rank2}" : "{$rank2}{$rank1}";
-			return ['strength' => 'marginal', 'description' => "Marginal suited {$handName}s"];
 		}
 
 		// Коннекторы (не одномастные)
@@ -230,8 +254,24 @@ class HandEvaluator
 			return ['strength' => $strength, 'description' => "Offsuit connector {$handName}o"];
 		}
 
+		// Условие для Axo (A5o-A9o)
+		if (($rank1 === 'A' && $value2 < 10) || ($rank2 === 'A' && $value1 < 10)) {
+			$handName = $rank1 === 'A' ? "{$rank1}{$rank2}" : "{$rank2}{$rank1}";
+			return ['strength' => 'marginal', 'description' => "Marginal high {$handName}o"];
+		}
+
+		// Условие для обычных маргинальных рук (K9o, Q8o, J7o)
+		$isMarginal =
+			(in_array($rank1, $highRanks) && $value2 >= 7 && $value2 < 10) ||
+			(in_array($rank2, $highRanks) && $value1 >= 7 && $value1 < 10);
+
+		if ($isMarginal) {
+			$handName = $value1 > $value2 ? "{$rank1}{$rank2}" : "{$rank2}{$rank1}";
+			return ['strength' => 'marginal', 'description' => "Marginal offsuit {$handName}o"];
+		}
+
 		// Все остальные руки (слабые)
-		return ['strength' => 'weak', 'description' => "Weak hand {$rank1}{$rank2}"];
+		return ['strength' => 'weak', 'description' => "Weak hand {$rank1}{$rank2}o"];
 	}
 
 	public static function evaluateCombination(array $allCards, array $holeCards, array $boardCards): array
