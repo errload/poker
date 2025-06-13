@@ -124,95 +124,118 @@ class HandEvaluator
 	public static function evaluatePreflopHand(array $holeCards): array
 	{
 		// Извлекаем базовые параметры карт
-		$rank1 = $holeCards[0]['rank']; // Достоинство первой карты
+		$rank1 = $holeCards[0]['rank']; // Достоинство первой карты (A,K,Q,J,T,9,...)
 		$rank2 = $holeCards[1]['rank']; // Достоинство второй карты
 		$suit1 = $holeCards[0]['suit']; // Масть первой карты
 		$suit2 = $holeCards[1]['suit']; // Масть второй карты
-		$value1 = $holeCards[0]['value']; // Числовое значение первой карты
-		$value2 = $holeCards[1]['value']; // Числовое значение второй карты
+		$value1 = $holeCards[0]['value']; // Числовое значение (A=14, K=13,...2=2)
+		$value2 = $holeCards[1]['value']; // Числовое значение
 
 		// Базовые характеристики руки
 		$isPair = $rank1 === $rank2; // Пара (две карты одного достоинства)
 		$isSuited = $suit1 === $suit2; // Одноцветные карты
-		$isConnector = abs($value1 - $value2) <= 1; // Коннекторы (карты по порядку, например 67)
-		$highCards = ['A', 'K', 'Q', 'J', 'T']; // Список высоких карт (T = 10)
-		$suitedSuffix = $isSuited ? 's' : 'o'; // Суффикс для обозначения масти (s - suited, o - offsuit)
+		$isConnector = abs($value1 - $value2) <= 1; // Коннекторы (последовательные, напр. 67)
+		$highCards = ['A', 'K', 'Q', 'J', 'T']; // Высокие карты (T = 10)
+		$suitedSuffix = $isSuited ? 's' : 'o'; // Суффикс для масти (s - suited, o - offsuit)
 
-		// Классификация пар
-		$isPremiumPair = $isPair && in_array($rank1, ['A', 'K', 'Q']); // AA, KK, QQ
-		$isStrongPair = $isPair && in_array($rank1, ['J', 'T']);       // JJ, TT
-		$isMediumPair = $isPair && in_array($rank1, ['9', '8', '7']);  // 99, 88, 77
-		$isWeakPair = $isPair && !$isPremiumPair && !$isStrongPair && !$isMediumPair; // 66-22
+		/*
+		 * Классификация пар по силе (для MTT 8-max):
+		 * - Premium: AA, KK, QQ (3-бет/4-бет в любом споте)
+		 * - Strong: JJ, TT (сильные, но уязвимы к переразыгрышам)
+		 * - Medium: 99-77 (требуют осторожности, зависят от позиции)
+		 * - Weak: 66-22 (только для сетминга или в блайндах)
+		 */
+		$isPremiumPair = $isPair && in_array($rank1, ['A', 'K', 'Q']);
+		$isStrongPair = $isPair && in_array($rank1, ['J', 'T']);
+		$isMediumPair = $isPair && in_array($rank1, ['9', '8', '7']);
+		$isWeakPair = $isPair && !$isPremiumPair && !$isStrongPair && !$isMediumPair;
 
-		// Проверка на две высокие карты (обе карты T+)
-		$isBothHighCards = in_array($rank1, $highCards) && in_array($rank2, $highCards);
-
-		// Проверка на туза с хорошим кикером (K,Q,J,T)
+		/*
+		 * Непарные руки:
+		 * - Премиум: AK (даже без пары - сильнейшая рука)
+		 * - Сильные: AQ, AJs, KQs (3-бет материал)
+		 * - Средние: ATs, KJs, QJs, KQo (зависит от позиции)
+		 */
 		$isAceWithGoodKicker = ($rank1 === 'A' && in_array($rank2, ['K', 'Q', 'J', 'T'])) ||
 			($rank2 === 'A' && in_array($rank1, ['K', 'Q', 'J', 'T']));
+		$isBothHighCards = in_array($rank1, $highCards) && in_array($rank2, $highCards);
 
-		// Проверка на спекулятивные одномастные руки:
-		// - Туз с любой картой ниже 10 (A2s-A9s)
-		// - Коннекторы из высоких карт (T9s, JTs, QJs и т.д.)
-		$isSpeculativeSuited = $isSuited && (($rank1 === 'A' && $rank2 < 'T') ||
-				($rank2 === 'A' && $rank1 < 'T') ||
-				($isConnector && $value1 >= 9 && $value2 >= 9));
+		/*
+		 * Спекулятивные руки (играются в глубоких стеках или в поздней позиции):
+		 * - Axs (A2s-A9s) - потенциал на флеш + туз
+		 * - Коннекторы (T9s, 98s, 87s) - потенциал на стрит/флеш
+		 * - Одноцветные коннекторы с высокими картами (JTs, QJs)
+		 */
+		$isSpeculativeSuited = $isSuited && (
+				($rank1 === 'A' && $rank2 < 'T') || // Axs
+				($rank2 === 'A' && $rank1 < 'T') || // xAs
+				($isConnector && $value1 >= 7 && $value2 >= 7) // Коннекторы от 78s
+			);
 
 		// Оценка силы руки по приоритетам (от сильных к слабым)
-
-		// 1. Премиум пары (AA, KK, QQ)
+		// 1. Премиум пары и AK (самые сильные стартеры)
 		if ($isPremiumPair) {
 			return ['strength' => 'premium', 'description' => "Premium pair {$rank1}{$rank1}"];
 		}
 
-		// 2. Сильные пары (JJ, TT, 99)
+		// 2. AK (особый случай - премиум даже без пары)
+		if (($rank1 === 'A' && $rank2 === 'K') || ($rank1 === 'K' && $rank2 === 'A')) {
+			return ['strength' => 'premium', 'description' => "Premium hand {$rank1}{$rank2}{$suitedSuffix}"];
+		}
+
+		// 3. Сильные пары (JJ, TT)
 		if ($isStrongPair) {
 			return ['strength' => 'strong', 'description' => "Strong pair {$rank1}{$rank1}"];
 		}
 
-		// 3. Руки с тузом и хорошим кикером (AK, AQ, AJ, AT)
+		// 4. Руки с тузом и хорошим кикером (AQ, AJs, ATs)
 		if ($isAceWithGoodKicker) {
 			$handName = $rank1 === 'A' ? "{$rank1}{$rank2}" : "{$rank2}{$rank1}";
-			// Особый случай для AK - премиум рука
-			if (($rank1 === 'A' && $rank2 === 'K') || ($rank1 === 'K' && $rank2 === 'A')) {
-				return ['strength' => 'premium', 'description' => "Premium hand {$handName}{$suitedSuffix}"];
-			}
-			return ['strength' => 'strong', 'description' => "Strong hand {$handName}{$suitedSuffix}"];
+			$strength = ($isSuited && $rank2 !== 'T') ? 'strong' : 'medium'; // ATs слабее AJs/AQs
+			return ['strength' => $strength, 'description' => "Ace with kicker {$handName}{$suitedSuffix}"];
 		}
 
-		// 4. Две высокие карты (KQ, KJ, KT, QJ, QT, JT)
+		// 5. Две высокие карты (KQ, KJ, QJ) - зависят от позиции
 		if ($isBothHighCards) {
 			$handName = $value1 > $value2 ? "{$rank1}{$rank2}" : "{$rank2}{$rank1}";
-			return ['strength' => 'medium', 'description' => "High cards {$handName}{$suitedSuffix}"];
+			$strength = ($isSuited || ($value1 >= 12 && $value2 >= 11)) ? 'medium' : 'marginal'; // KQs > KQo > KJo
+			return ['strength' => $strength, 'description' => "High cards {$handName}{$suitedSuffix}"];
 		}
 
-		// 5. Средние пары (88-22)
+		// 6. Средние пары (99-77)
 		if ($isMediumPair) {
 			return ['strength' => 'medium', 'description' => "Medium pair {$rank1}{$rank1}"];
 		}
 
-		// слабые пары
+		// 7. Спекулятивные одномастные руки (Axs, коннекторы)
+		if ($isSpeculativeSuited) {
+			$handName = $value1 > $value2 ? "{$rank1}{$rank2}" : "{$rank2}{$rank1}";
+			// Разделяем Axs и коннекторы
+			$type = ($rank1 === 'A' || $rank2 === 'A') ? "Axs" : "Suited connector";
+			return ['strength' => 'speculative', 'description' => "{$type} {$handName}s"];
+		}
+
+		// 8. Слабые пары (66-22)
 		if ($isWeakPair) {
 			return ['strength' => 'weak', 'description' => "Weak pair {$rank1}{$rank1}"];
 		}
 
-		// 6. Спекулятивные одномастные руки (A2s-A9s, T9s, JTs и т.д.)
-		if ($isSpeculativeSuited) {
-			$handName = $value1 > $value2 ? "{$rank1}{$rank2}" : "{$rank2}{$rank1}";
-			return ['strength' => 'speculative', 'description' => "Speculative suited {$handName}s"];
-		}
-
-		// 7. Все остальные одномастные руки (не попавшие в предыдущие категории)
+		// 9. Остальные одномастные руки (не попавшие в категории выше)
 		if ($isSuited) {
-			return ['strength' => 'marginal', 'description' => "Suited cards {$rank1}{$rank2}s"];
+			$handName = $value1 > $value2 ? "{$rank1}{$rank2}" : "{$rank2}{$rank1}";
+			// Неспекулятивные одномастные (K7s, Q4s и т.д.)
+			return ['strength' => 'marginal', 'description' => "Marginal suited {$handName}s"];
 		}
 
-		// 8. Коннекторы из относительно высоких карт (89o, 9To, JTo и т.д.)
-		if ($isConnector && ($value1 >= 8 || $value2 >= 8)) {
-			return ['strength' => 'marginal', 'description' => "Connector {$rank1}{$rank2}o"];
+		// 10. Коннекторы (не одномастные)
+		if ($isConnector) {
+			$handName = $value1 > $value2 ? "{$rank1}{$rank2}" : "{$rank2}{$rank1}";
+			// Только относительно высокие (JTo, T9o)
+			$strength = ($value1 >= 9 || $value2 >= 9) ? 'marginal' : 'weak';
+			return ['strength' => $strength, 'description' => "Connector {$handName}o"];
 		}
 
-		// 9. Все остальные руки считаются слабыми
+		// 11. Все остальные руки (слабые)
 		return ['strength' => 'weak', 'description' => "Weak hand {$rank1}{$rank2}"];
 	}
 
