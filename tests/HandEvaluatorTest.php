@@ -6,27 +6,38 @@ use PHPUnit\Framework\TestCase;
 
 class HandEvaluatorTest extends TestCase
 {
+	private function callParseCards(string $cardString): array
+	{
+		$reflector = new \ReflectionClass(HandEvaluator::class);
+		$method = $reflector->getMethod('parseCards');
+		$method->setAccessible(true);
+		return $method->invokeArgs(null, [$cardString]);
+	}
+
 	public function testParseCards()
 	{
-		// валидные карты
+		// Тест разбора валидных карт
 		$cards = 'Ah Ks Qd Jc Th';
-		$parsed = HandEvaluator::parseCards($cards);
+		$parsed = $this->callParseCards($cards);
 
+		// Проверяем что разобрано 5 карт
 		$this->assertCount(5, $parsed);
+
+		// Проверяем первую карту (Ah)
 		$this->assertEquals('A', $parsed[0]['rank']);
 		$this->assertEquals('h', $parsed[0]['suit']);
 		$this->assertEquals(14, $parsed[0]['value']);
 
-		// пустая строка
-		$empty = HandEvaluator::parseCards('');
+		// Тест с пустой строкой - должен вернуть пустой массив
+		$empty = $this->callParseCards('');
 		$this->assertEmpty($empty);
 
-		// невалидные карты
-		$invalid = HandEvaluator::parseCards('Xy 11 ZZ');
+		// Тест с невалидными картами - должен вернуть пустой массив
+		$invalid = $this->callParseCards('Xy 11 ZZ');
 		$this->assertEmpty($invalid);
 
-		// дубликаты карт
-		$duplicates = HandEvaluator::parseCards("Ah Ah Ks Qd Jc");
+		// Тест с дубликатами карт - должен вернуть пустой массив
+		$duplicates = $this->callParseCards("Ah Ah Ks Qd Jc");
 		$this->assertEmpty($duplicates);
 	}
 

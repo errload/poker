@@ -57,44 +57,30 @@ class HandEvaluator
 
 	/**
 	 * Парсит строку с картами в структурированный массив
-	 *
 	 * @param string $cardString Строка с картами (например "As Kd Qh" или "Td 9c")
-	 * @return array Массив карт в формате:
-	 *              [
-	 *                  'rank' => достоинство (A,K,Q,J,T,9..2),
-	 *                  'suit' => масть (c,d,h,s),
-	 *                  'full' => полное название (например "As"),
-	 *                  'value' => числовое значение карты
-	 *              ]
-	 *              Возвращает пустой массив при ошибке валидации
+	 * @return array Массив карт
 	 */
-	public static function parseCards(string $cardString): array
+	private static function parseCards(string $cardString): array
 	{
 		// Если входная строка пустая - сразу возвращаем пустой массив
 		if (empty($cardString)) return [];
 
-		$cards = [];        // Массив для результата
-		$uniqueCards = [];  // Массив для проверки уникальности карт
+		$cards = [];
+		$uniqueCards = [];
 
 		// Разбиваем строку по пробелам (поддерживаем несколько форматов: "AsKd" или "As Kd")
 		$parts = preg_split('/\s+/', trim($cardString));
 
 		foreach ($parts as $card) {
 			// Проверяем соответствие формата карты (например "As" или "Kd")
-			// Регулярка:
-			// ^ - начало строки
-			// ([2-9TJQKA]) - достоинство (цифры 2-9 или буквы T,J,Q,K,A)
-			// ([cdhs]) - масть (c,d,h,s)
-			// $ - конец строки
-			// i - регистронезависимость
 			if (preg_match('/^([2-9TJQKA])([cdhs])$/i', $card, $matches)) {
-				$rank = strtoupper($matches[1]);  // Достоинство (в верхнем регистре)
-				$suit = strtolower($matches[2]);  // Масть (в нижнем регистре)
-				$fullCard = $rank . $suit;        // Полное название карты (например "As")
+				$rank = strtoupper($matches[1]);
+				$suit = strtolower($matches[2]);
+				$fullCard = $rank . $suit;
 
 				// Проверка на дубликаты карт
 				if (isset($uniqueCards[$fullCard])) {
-					return []; // Если карта уже встречалась - возвращаем ошибку (пустой массив)
+					return [];
 				}
 
 				// Запоминаем карту как уникальную
@@ -105,7 +91,7 @@ class HandEvaluator
 					'rank' => $rank,
 					'suit' => $suit,
 					'full' => $fullCard,
-					'value' => self::RANK_VALUES[$rank] ?? 0  // Числовое значение из констант класса
+					'value' => self::RANK_VALUES[$rank] ?? 0
 				];
 			}
 		}
@@ -124,12 +110,12 @@ class HandEvaluator
 	public static function evaluatePreflopHand(array $holeCards): array
 	{
 		// Извлекаем базовые параметры карт
-		$rank1 = $holeCards[0]['rank']; // Достоинство первой карты (A,K,Q,J,T,9,...)
-		$rank2 = $holeCards[1]['rank']; // Достоинство второй карты
-		$suit1 = $holeCards[0]['suit']; // Масть первой карты
-		$suit2 = $holeCards[1]['suit']; // Масть второй карты
-		$value1 = $holeCards[0]['value']; // Числовое значение (A=14, K=13,...2=2)
-		$value2 = $holeCards[1]['value']; // Числовое значение
+		$rank1 = $holeCards[0]['rank'];
+		$rank2 = $holeCards[1]['rank'];
+		$suit1 = $holeCards[0]['suit'];
+		$suit2 = $holeCards[1]['suit'];
+		$value1 = $holeCards[0]['value'];
+		$value2 = $holeCards[1]['value'];
 
 		// Базовые характеристики руки
 		$isPair = $rank1 === $rank2; // Пара (две карты одного достоинства)
