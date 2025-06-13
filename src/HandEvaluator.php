@@ -10,16 +10,33 @@ class HandEvaluator
 		'T' => 10, 'J' => 11, 'Q' => 12, 'K' => 13, 'A' => 14
 	];
 
-	public static function evaluateHand(string $heroCards, ?string $board = null): array
+	public static function evaluateHand(\PDO $pdo, int $handId): array
 	{
-		$parsedHeroCards = self::parseCards($heroCards);
-		$parsedBoardCards = $board ? self::parseCards($board) : [];
+		// Получаем данные о раздаче из базы данных
+		$handStmt = $pdo->prepare("
+			SELECT hero_cards, board, is_completed 
+			FROM hands 
+			WHERE hand_id = :hand_id
+		");
+		$handStmt->execute([':hand_id' => $handId]);
+		$handData = $handStmt->fetch(\PDO::FETCH_ASSOC);
 
-		if (count($parsedHeroCards) !== 2) {
-			return ['strength' => 'invalid', 'description' => 'Invalid hole cards'];
+		if (!$handData) {
+			return ['strength' => 'invalid', 'description' => 'Раздача не найдена'];
 		}
 
-		// Если нет борда - оцениваем только префлоп
+		$heroCardsString = $handData['hero_cards'] ?? '';
+		$boardString = $handData['board'] ?? '';
+		$isCompleted = (bool)$handData['is_completed'];
+
+		$parsedHeroCards = self::parseCards($heroCardsString);
+		$parsedBoardCards = self::parseCards($boardString);
+
+		// Проверяем валидность карт героя
+		if (count($parsedHeroCards) !== 2) {
+			return ['strength' => 'invalid', 'description' => 'Неверные карты героя'];
+		}
+
 		if (empty($parsedBoardCards)) {
 			return self::evaluatePreflopHand($parsedHeroCards);
 		}
@@ -27,13 +44,12 @@ class HandEvaluator
 		$allCards = array_merge($parsedHeroCards, $parsedBoardCards);
 		$result = self::evaluateCombination($allCards, $parsedHeroCards, $parsedBoardCards);
 
-		// Добавляем анализ дро, если не ривер
-		if (count($parsedBoardCards) < 5) {
+		if (!$isCompleted && count($parsedBoardCards) < 5) {
 			$draws = self::evaluateDraws($parsedHeroCards, $parsedBoardCards);
 			if (!empty($draws['draws'])) {
 				$result['draws'] = $draws['draws'];
 				$result['outs'] = $draws['outs'];
-				$result['description'] .= ' + ' . implode(', ', $draws['draws']) . ' (' . $draws['outs'] . ' outs)';
+				$result['description'] .= ' + ' . implode(', ', $draws['draws']) . ' (' . $draws['outs'] . ' аутов)';
 			}
 		}
 

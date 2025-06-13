@@ -414,21 +414,54 @@ class HandEvaluatorTest extends TestCase
 	 */
 	public function testEvaluateHand()
 	{
-		// Префлоп
-		$preflopResult = HandEvaluator::evaluateHand("Ah Kh");
+		// Создаем мок PDO для тестирования
+		$pdo = $this->createMock(\PDO::class);
+		$stmt = $this->createMock(\PDOStatement::class);
+
+		// Настраиваем мок для префлопа
+		$pdo->method('prepare')->willReturn($stmt);
+
+		// Тест для префлопа
+		$stmt->method('fetch')->willReturn([
+			'hero_cards' => 'Ah Kh',
+			'board' => '',
+			'is_completed' => false
+		]);
+		$preflopResult = HandEvaluator::evaluateHand($pdo, 1);
 		$this->assertEquals('premium', $preflopResult['strength']);
 
-		// Флоп с флешем
-		$flopResult = HandEvaluator::evaluateHand("Ah Kh", "Qh Jh 9h");
+		// Тест для флопа с флешем
+		$stmt->method('fetch')->willReturn([
+			'hero_cards' => 'Ah Kh',
+			'board' => 'Qh Jh 9h',
+			'is_completed' => false
+		]);
+		$flopResult = HandEvaluator::evaluateHand($pdo, 2);
 		$this->assertEquals('flush', $flopResult['strength']);
 
-		// Терн с дро
-		$turnResult = HandEvaluator::evaluateHand("Th 9h", "Qh Jh 2d 3c");
+		// Тест для терна с дро
+		$stmt->method('fetch')->willReturn([
+			'hero_cards' => 'Th 9h',
+			'board' => 'Qh Jh 2d 3c',
+			'is_completed' => false
+		]);
+		$turnResult = HandEvaluator::evaluateHand($pdo, 3);
 		$this->assertArrayHasKey('draws', $turnResult);
 		$this->assertContains('flush_draw', $turnResult['draws']);
 
-		// Невалидные карты
-		$invalidResult = HandEvaluator::evaluateHand("Ah");
+		// Тест для невалидных карт
+		$stmt->method('fetch')->willReturn([
+			'hero_cards' => 'Ah',
+			'board' => '',
+			'is_completed' => false
+		]);
+		$invalidResult = HandEvaluator::evaluateHand($pdo, 4);
 		$this->assertEquals('invalid', $invalidResult['strength']);
+
+		// Тест для несуществующей раздачи
+		$stmt->method('fetch')->willReturn(false);
+		$notFoundResult = HandEvaluator::evaluateHand($pdo, 999);
+		$this->assertEquals('invalid', $notFoundResult['strength']);
+		$this->assertEquals('Раздача не найдена', $notFoundResult['description']);
 	}
 }
