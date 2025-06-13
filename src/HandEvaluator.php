@@ -55,34 +55,62 @@ class HandEvaluator
 		return $result;
 	}
 
+	/**
+	 * Парсит строку с картами в структурированный массив
+	 *
+	 * @param string $cardString Строка с картами (например "As Kd Qh" или "Td 9c")
+	 * @return array Массив карт в формате:
+	 *              [
+	 *                  'rank' => достоинство (A,K,Q,J,T,9..2),
+	 *                  'suit' => масть (c,d,h,s),
+	 *                  'full' => полное название (например "As"),
+	 *                  'value' => числовое значение карты
+	 *              ]
+	 *              Возвращает пустой массив при ошибке валидации
+	 */
 	public static function parseCards(string $cardString): array
 	{
+		// Если входная строка пустая - сразу возвращаем пустой массив
 		if (empty($cardString)) return [];
 
-		$cards = [];
-		$uniqueCards = [];
+		$cards = [];        // Массив для результата
+		$uniqueCards = [];  // Массив для проверки уникальности карт
+
+		// Разбиваем строку по пробелам (поддерживаем несколько форматов: "AsKd" или "As Kd")
 		$parts = preg_split('/\s+/', trim($cardString));
 
 		foreach ($parts as $card) {
+			// Проверяем соответствие формата карты (например "As" или "Kd")
+			// Регулярка:
+			// ^ - начало строки
+			// ([2-9TJQKA]) - достоинство (цифры 2-9 или буквы T,J,Q,K,A)
+			// ([cdhs]) - масть (c,d,h,s)
+			// $ - конец строки
+			// i - регистронезависимость
 			if (preg_match('/^([2-9TJQKA])([cdhs])$/i', $card, $matches)) {
-				$rank = strtoupper($matches[1]);
-				$suit = strtolower($matches[2]);
-				$fullCard = $rank . $suit;
+				$rank = strtoupper($matches[1]);  // Достоинство (в верхнем регистре)
+				$suit = strtolower($matches[2]);  // Масть (в нижнем регистре)
+				$fullCard = $rank . $suit;        // Полное название карты (например "As")
 
+				// Проверка на дубликаты карт
 				if (isset($uniqueCards[$fullCard])) {
-					return [];
+					return []; // Если карта уже встречалась - возвращаем ошибку (пустой массив)
 				}
 
+				// Запоминаем карту как уникальную
 				$uniqueCards[$fullCard] = true;
+
+				// Добавляем карту в результат
 				$cards[] = [
 					'rank' => $rank,
 					'suit' => $suit,
-					'full' => $rank . $suit,
-					'value' => self::RANK_VALUES[$rank] ?? 0
+					'full' => $fullCard,
+					'value' => self::RANK_VALUES[$rank] ?? 0  // Числовое значение из констант класса
 				];
 			}
 		}
 
+		// Сортируем карты по убыванию значения (старшие карты сначала)
 		usort($cards, function($a, $b) {
 			return $b['value'] - $a['value'];
 		});
@@ -90,51 +118,101 @@ class HandEvaluator
 		return $cards;
 	}
 
+	/**
+	 * Оценивает силу стартовой руки (двух карт) на префлопе
+	 */
 	public static function evaluatePreflopHand(array $holeCards): array
 	{
-		$rank1 = $holeCards[0]['rank'];
-		$rank2 = $holeCards[1]['rank'];
-		$suit1 = $holeCards[0]['suit'];
-		$suit2 = $holeCards[1]['suit'];
+		// Извлекаем базовые параметры карт
+		$rank1 = $holeCards[0]['rank']; // Достоинство первой карты
+		$rank2 = $holeCards[1]['rank']; // Достоинство второй карты
+		$suit1 = $holeCards[0]['suit']; // Масть первой карты
+		$suit2 = $holeCards[1]['suit']; // Масть второй карты
+		$value1 = $holeCards[0]['value']; // Числовое значение первой карты
+		$value2 = $holeCards[1]['value']; // Числовое значение второй карты
 
-		$isPair = $rank1 === $rank2;
-		$isSuited = $suit1 === $suit2;
-		$isConnector = abs($holeCards[0]['value'] - $holeCards[1]['value']) <= 1;
-		$highCards = ['A', 'K', 'Q', 'J', 'T'];
-		$isHighCard = in_array($rank1, $highCards) || in_array($rank2, $highCards);
+		// Базовые характеристики руки
+		$isPair = $rank1 === $rank2; // Пара (две карты одного достоинства)
+		$isSuited = $suit1 === $suit2; // Одноцветные карты
+		$isConnector = abs($value1 - $value2) <= 1; // Коннекторы (карты по порядку, например 67)
+		$highCards = ['A', 'K', 'Q', 'J', 'T']; // Список высоких карт (T = 10)
+		$suitedSuffix = $isSuited ? 's' : 'o'; // Суффикс для обозначения масти (s - suited, o - offsuit)
 
-		if ($isPair) {
-			if (in_array($rank1, ['A', 'K', 'Q'])) {
-				return ['strength' => 'premium', 'description' => "Premium pair {$rank1}{$rank1}"];
-			} elseif (in_array($rank1, ['J', 'T', '9'])) {
-				return ['strength' => 'strong', 'description' => "Strong pair {$rank1}{$rank1}"];
-			} else {
-				return ['strength' => 'medium', 'description' => "Medium pair {$rank1}{$rank1}"];
-			}
+		// Классификация пар
+		$isPremiumPair = $isPair && in_array($rank1, ['A', 'K', 'Q']); // AA, KK, QQ
+		$isStrongPair = $isPair && in_array($rank1, ['J', 'T']);       // JJ, TT
+		$isMediumPair = $isPair && in_array($rank1, ['9', '8', '7']);  // 99, 88, 77
+		$isWeakPair = $isPair && !$isPremiumPair && !$isStrongPair && !$isMediumPair; // 66-22
+
+		// Проверка на две высокие карты (обе карты T+)
+		$isBothHighCards = in_array($rank1, $highCards) && in_array($rank2, $highCards);
+
+		// Проверка на туза с хорошим кикером (K,Q,J,T)
+		$isAceWithGoodKicker = ($rank1 === 'A' && in_array($rank2, ['K', 'Q', 'J', 'T'])) ||
+			($rank2 === 'A' && in_array($rank1, ['K', 'Q', 'J', 'T']));
+
+		// Проверка на спекулятивные одномастные руки:
+		// - Туз с любой картой ниже 10 (A2s-A9s)
+		// - Коннекторы из высоких карт (T9s, JTs, QJs и т.д.)
+		$isSpeculativeSuited = $isSuited && (($rank1 === 'A' && $rank2 < 'T') ||
+				($rank2 === 'A' && $rank1 < 'T') ||
+				($isConnector && $value1 >= 9 && $value2 >= 9));
+
+		// Оценка силы руки по приоритетам (от сильных к слабым)
+
+		// 1. Премиум пары (AA, KK, QQ)
+		if ($isPremiumPair) {
+			return ['strength' => 'premium', 'description' => "Premium pair {$rank1}{$rank1}"];
 		}
 
-		if ($isHighCard) {
+		// 2. Сильные пары (JJ, TT, 99)
+		if ($isStrongPair) {
+			return ['strength' => 'strong', 'description' => "Strong pair {$rank1}{$rank1}"];
+		}
+
+		// 3. Руки с тузом и хорошим кикером (AK, AQ, AJ, AT)
+		if ($isAceWithGoodKicker) {
+			$handName = $rank1 === 'A' ? "{$rank1}{$rank2}" : "{$rank2}{$rank1}";
+			// Особый случай для AK - премиум рука
 			if (($rank1 === 'A' && $rank2 === 'K') || ($rank1 === 'K' && $rank2 === 'A')) {
-				return ['strength' => 'premium', 'description' => "Premium hand AK" . ($isSuited ? 's' : 'o')];
+				return ['strength' => 'premium', 'description' => "Premium hand {$handName}{$suitedSuffix}"];
 			}
-
-			if (in_array($rank1, ['A', 'K']) && in_array($rank2, ['Q', 'J', 'T'])) {
-				return ['strength' => 'strong', 'description' => "Strong hand {$rank1}{$rank2}" . ($isSuited ? 's' : 'o')];
-			}
+			return ['strength' => 'strong', 'description' => "Strong hand {$handName}{$suitedSuffix}"];
 		}
 
-		if ($isSuited && $isConnector && $isHighCard) {
-			return ['strength' => 'strong', 'description' => "Suited connector {$rank1}{$rank2}s"];
+		// 4. Две высокие карты (KQ, KJ, KT, QJ, QT, JT)
+		if ($isBothHighCards) {
+			$handName = $value1 > $value2 ? "{$rank1}{$rank2}" : "{$rank2}{$rank1}";
+			return ['strength' => 'medium', 'description' => "High cards {$handName}{$suitedSuffix}"];
 		}
 
+		// 5. Средние пары (88-22)
+		if ($isMediumPair) {
+			return ['strength' => 'medium', 'description' => "Medium pair {$rank1}{$rank1}"];
+		}
+
+		// слабые пары
+		if ($isWeakPair) {
+			return ['strength' => 'weak', 'description' => "Weak pair {$rank1}{$rank1}"];
+		}
+
+		// 6. Спекулятивные одномастные руки (A2s-A9s, T9s, JTs и т.д.)
+		if ($isSpeculativeSuited) {
+			$handName = $value1 > $value2 ? "{$rank1}{$rank2}" : "{$rank2}{$rank1}";
+			return ['strength' => 'speculative', 'description' => "Speculative suited {$handName}s"];
+		}
+
+		// 7. Все остальные одномастные руки (не попавшие в предыдущие категории)
 		if ($isSuited) {
-			return ['strength' => 'speculative', 'description' => "Suited cards {$rank1}{$rank2}s"];
+			return ['strength' => 'marginal', 'description' => "Suited cards {$rank1}{$rank2}s"];
 		}
 
-		if ($isConnector) {
-			return ['strength' => 'speculative', 'description' => "Connector {$rank1}{$rank2}o"];
+		// 8. Коннекторы из относительно высоких карт (89o, 9To, JTo и т.д.)
+		if ($isConnector && ($value1 >= 8 || $value2 >= 8)) {
+			return ['strength' => 'marginal', 'description' => "Connector {$rank1}{$rank2}o"];
 		}
 
+		// 9. Все остальные руки считаются слабыми
 		return ['strength' => 'weak', 'description' => "Weak hand {$rank1}{$rank2}"];
 	}
 
