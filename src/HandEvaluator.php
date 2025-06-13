@@ -315,7 +315,7 @@ class HandEvaluator
 			return $fullHouseResult;
 		}
 
-		if ($flushResult = self::checkFlush($allCards, $suits, $suitCounts, $holeCards, $boardCards)) {
+		if ($flushResult = self::checkFlush($holeCards, $boardCards)) {
 			return $flushResult;
 		}
 
@@ -479,77 +479,6 @@ class HandEvaluator
 		return null;
 	}
 
-	public static function checkFlush(array $allCards, array $suits, array $suitCounts, array $holeCards, array $boardCards): ?array
-	{
-		$flushSuit = null;
-		$flushCards = [];
-
-		foreach ($suitCounts as $suit => $count) {
-			if ($count >= 5) {
-				$flushSuit = $suit;
-				$flushCards = array_filter($allCards, function($card) use ($suit) {
-					return $card['suit'] === $suit;
-				});
-				usort($flushCards, function($a, $b) { return $b['value'] - $a['value']; });
-				break;
-			}
-		}
-
-		if (!$flushSuit) return null;
-
-		$nutFlush = $flushCards[0]['value'] == 14 && in_array(13, array_column($flushCards, 'value'));
-		$hasHigherCards = (max(array_column($boardCards, 'value')) > $flushCards[0]['value']);
-
-		return [
-			'strength' => 'flush',
-			'description' => 'Flush ('.$flushSuit.')',
-			'combination' => array_slice($flushCards, 0, 5),
-			'kickers' => [],
-			'nut_status' => $nutFlush ? 'nut_flush' : ($hasHigherCards ? 'weak' : 'strong')
-		];
-	}
-
-	public static function checkStraight(array $allCards, array $values): ?array
-	{
-		$uniqueValues = array_unique($values);
-		rsort($uniqueValues);
-
-		// Проверка для обычного стрита (A-5-4-3-2)
-		if (in_array(14, $uniqueValues)) {
-			$uniqueValues[] = 1; // Добавляем младший туз для проверки стрита A-2-3-4-5
-		}
-
-		$uniqueValues = array_unique($uniqueValues);
-		sort($uniqueValues);
-
-		$straightLength = 1;
-		$straightCards = [];
-		for ($i = 1; $i < count($uniqueValues); $i++) {
-			if ($uniqueValues[$i] == $uniqueValues[$i-1] + 1) {
-				$straightLength++;
-				if ($straightLength >= 5) {
-					$straightCards = array_slice($uniqueValues, $i-4, 5);
-					rsort($straightCards);
-				}
-			} else {
-				$straightLength = 1;
-			}
-		}
-
-		if (empty($straightCards)) return null;
-
-		$nutStraight = $straightCards[0] == 14;
-		$isVulnerable = ($straightCards[0] < 12 && count(array_unique($straightCards)) == 5);
-
-		return [
-			'strength' => 'straight',
-			'description' => 'Straight ('.implode('-', $straightCards).')',
-			'combination' => [],
-			'kickers' => [],
-			'nut_status' => $nutStraight ? 'nut_straight' : ($isVulnerable ? 'medium' : 'strong')
-		];
-	}
-
 	/**
 	 * Проверяет наличие комбинации "Каре"
 	 * @param array $allCards Массив всех карт
@@ -671,6 +600,120 @@ class HandEvaluator
 			'combination' => $combination,
 			'kickers' => [],
 			'nut_status' => $tripRank == 'A' ? 'absolute_nuts' : 'strong'
+		];
+	}
+
+	/**
+	 * Проверяет наличие флеша (5 карт одной масти) в комбинации карт игрока и общих карт
+	 * @param array $heroCards Карты героя
+	 * @param array $boardCards Общие карты на столе
+	 * @return array|null Возвращает информацию о флеше или null
+	 */
+	private static function checkFlush(
+		array $heroCards,
+		array $boardCards,
+		array $dangerThresholds = ['nut' => 14, 'high' => 11, 'medium' => 9, 'low' => 6]
+	): ?array {
+		// 1. Проверка наличия флеша
+		$allCards = array_merge($heroCards, $boardCards);
+		$suitCounts = array_count_values(array_column($allCards, 'suit'));
+
+		$flushSuit = null;
+		foreach ($suitCounts as $suit => $count) {
+			if ($count >= 5) {
+				$flushSuit = $suit;
+				break;
+			}
+		}
+
+		if (!$flushSuit) return null;
+
+		// 2. Анализ карт флеша
+		$flushCards = array_filter($allCards, fn($c) => $c['suit'] === $flushSuit);
+		usort($flushCards, fn($a, $b) => $b['value'] - $a['value']);
+		$topFlushCards = array_slice($flushCards, 0, 5);
+
+		$topValue = $topFlushCards[0]['value'];
+		$bottomValue = $topFlushCards[4]['value'];
+		$heroFlushCards = array_filter($heroCards, fn($c) => $c['suit'] === $flushSuit);
+		$heroFlushValues = array_column($heroFlushCards, 'value');
+		$heroHighest = !empty($heroFlushValues) ? max($heroFlushValues) : 0;
+
+		// 3. ТОЧНАЯ ЛОГИКА ОПРЕДЕЛЕНИЯ ОПАСНОСТИ
+		$danger = 'weak';
+
+		if ($heroHighest === 14) {
+			$danger = 'nut';
+		} elseif ($topValue >= 13) {
+			$danger = 'high';
+		} elseif ($heroHighest === 12) {
+			$danger = 'high';
+		} elseif ($topValue === 12 || $heroHighest === 11) {
+			$danger = 'medium';
+		} elseif ($topValue === 11 || $heroHighest === 10) {
+			$danger = 'low';
+		}
+
+		// 4. Определение уязвимости
+		$boardFlushValues = array_column(
+			array_filter($boardCards, fn($c) => $c['suit'] === $flushSuit),
+			'value'
+		);
+		$isVulnerable = !empty($boardFlushValues) && max($boardFlushValues) > $heroHighest;
+
+		// 5. Дополнительные параметры
+		$heroHasTopCard = $heroHighest === $topValue;
+		$isLow = $topValue <= 10 && $bottomValue <= 7;
+
+		return [
+			'strength' => 'flush',
+			'suit' => $flushSuit,
+			'top_card' => $topValue,
+			'hero_has_top' => $heroHasTopCard,
+			'danger' => $danger,
+			'vulnerable' => $isVulnerable,
+			'is_low' => $isLow
+		];
+	}
+
+	public static function checkStraight(array $allCards, array $values): ?array
+	{
+		$uniqueValues = array_unique($values);
+		rsort($uniqueValues);
+
+		// Проверка для обычного стрита (A-5-4-3-2)
+		if (in_array(14, $uniqueValues)) {
+			$uniqueValues[] = 1; // Добавляем младший туз для проверки стрита A-2-3-4-5
+		}
+
+		$uniqueValues = array_unique($uniqueValues);
+		sort($uniqueValues);
+
+		$straightLength = 1;
+		$straightCards = [];
+		for ($i = 1; $i < count($uniqueValues); $i++) {
+			if ($uniqueValues[$i] == $uniqueValues[$i-1] + 1) {
+				$straightLength++;
+				if ($straightLength >= 5) {
+					$straightCards = array_slice($uniqueValues, $i-4, 5);
+					rsort($straightCards);
+				}
+			} else {
+				$straightLength = 1;
+			}
+		}
+
+		if (empty($straightCards)) return null;
+
+		$nutStraight = $straightCards[0] == 14;
+		$isVulnerable = ($straightCards[0] < 12 && count(array_unique($straightCards)) == 5);
+
+		return [
+			'strength' => 'straight',
+			'description' => 'Straight ('.implode('-', $straightCards).')',
+			'combination' => [],
+			'kickers' => [],
+			'nut_status' => $nutStraight ? 'nut_straight' : ($isVulnerable ? 'medium' : 'strong')
 		];
 	}
 

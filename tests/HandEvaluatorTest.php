@@ -599,7 +599,7 @@ class HandEvaluatorTest extends TestCase
 		$this->assertEquals('A', $result['combination'][0]['rank']);
 		$this->assertEquals('K', $result['combination'][3]['rank']);
 
-		// Тест 1: Корректный фулл-хаус (тройка 4 + пара J)
+		// Корректный фулл-хаус (тройка 4 + пара J)
 		$fullHouseCards = [
 			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
 			['rank' => 'K', 'suit' => 's', 'value' => 13, 'full' => 'Ks'],
@@ -635,39 +635,98 @@ class HandEvaluatorTest extends TestCase
 	 * Тестирует метод checkFlush()
 	 * Проверяет определение флеша
 	 */
+	private function callCheckFlush(array $heroCards, array $boardCards): ?array
+	{
+		$reflector = new \ReflectionClass(HandEvaluator::class);
+		$method = $reflector->getMethod('checkFlush');
+		$method->setAccessible(true);
+		return $method->invokeArgs(null, [$heroCards, $boardCards, $boardCards]);
+	}
+
 	public function testCheckFlush()
 	{
-		$flushCards = [
+		// Натс-флеш (A-high) с разными картами
+		$heroCards = [
 			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
+			['rank' => '7', 'suit' => 'h', 'value' => 7, 'full' => '7h']
+		];
+		$boardCards = [
 			['rank' => 'K', 'suit' => 'h', 'value' => 13, 'full' => 'Kh'],
+			['rank' => '2', 'suit' => 'h', 'value' => 2, 'full' => '2h'],
+			['rank' => 'Q', 'suit' => 's', 'value' => 12, 'full' => 'Qs'],
+			['rank' => 'J', 'suit' => 'h', 'value' => 11, 'full' => 'Jh'],
+			['rank' => '4', 'suit' => 'h', 'value' => 4, 'full' => '4h']
+		];
+
+		$result = $this->callCheckFlush($heroCards, $boardCards);
+		$this->assertEquals('nut', $result['danger']);
+		$this->assertTrue($result['hero_has_top']);
+
+		// Сильный флеш (Q-high), уязвимый (у соперника может быть K)
+		$heroCards = [
+			['rank' => 'Q', 'suit' => 'd', 'value' => 12, 'full' => 'Qd'],
+			['rank' => '9', 'suit' => 'd', 'value' => 9, 'full' => '9d']
+		];
+		$boardCards = [
+			['rank' => 'J', 'suit' => 'd', 'value' => 11, 'full' => 'Jd'],
+			['rank' => '8', 'suit' => 'd', 'value' => 8, 'full' => '8d'],
+			['rank' => '3', 'suit' => 'd', 'value' => 3, 'full' => '3d']
+		];
+
+		$result = $this->callCheckFlush($heroCards, $boardCards);
+		$this->assertEquals('high', $result['danger']);
+		$this->assertTrue($result['hero_has_top']);
+		$this->assertFalse($result['vulnerable']);
+
+		// Средний флеш (T-high) с "дырками"
+		$heroCards = [
+			['rank' => 'T', 'suit' => 'c', 'value' => 10, 'full' => 'Tc'],
+			['rank' => '4', 'suit' => 'c', 'value' => 4, 'full' => '4c']
+		];
+		$boardCards = [
+			['rank' => '8', 'suit' => 'c', 'value' => 8, 'full' => '8c'],
+			['rank' => '7', 'suit' => 'c', 'value' => 7, 'full' => '7c'],
+			['rank' => '2', 'suit' => 'c', 'value' => 2, 'full' => '2c'],
+			['rank' => 'A', 'suit' => 's', 'value' => 14, 'full' => 'As'],
+			['rank' => 'K', 'suit' => 'c', 'value' => 13, 'full' => 'Kc']
+		];
+
+		$result = $this->callCheckFlush($heroCards, $boardCards);
+		$this->assertEquals('medium', $result['danger']);
+		$this->assertTrue($result['hero_has_top']);
+		$this->assertTrue($result['is_low']);
+
+		// Слабый флеш (7-high) с разбросанными картами
+		$heroCards = [
+			['rank' => '7', 'suit' => 's', 'value' => 7, 'full' => '7s'],
+			['rank' => '3', 'suit' => 's', 'value' => 3, 'full' => '3s']
+		];
+		$boardCards = [
+			['rank' => '5', 'suit' => 's', 'value' => 5, 'full' => '5s'],
+			['rank' => '4', 'suit' => 's', 'value' => 4, 'full' => '4s'],
+			['rank' => '2', 'suit' => 's', 'value' => 2, 'full' => '2s'],
+			['rank' => 'Q', 'suit' => 'd', 'value' => 12, 'full' => 'Qd'],
+			['rank' => 'J', 'suit' => 'h', 'value' => 11, 'full' => 'Jh']
+		];
+
+		$result = $this->callCheckFlush($heroCards, $boardCards);
+		$this->assertEquals('low', $result['danger']);
+		$this->assertTrue($result['hero_has_top']);
+		$this->assertTrue($result['is_low']);
+
+		// Нет флеша (только 4 карты одной масти)
+		$heroCards = [
+			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
+			['rank' => 'K', 'suit' => 'd', 'value' => 13, 'full' => 'Kd']
+		];
+		$boardCards = [
 			['rank' => 'Q', 'suit' => 'h', 'value' => 12, 'full' => 'Qh'],
 			['rank' => 'J', 'suit' => 'h', 'value' => 11, 'full' => 'Jh'],
-			['rank' => '9', 'suit' => 'h', 'value' => 9, 'full' => '9h'],
-			['rank' => '2', 'suit' => 'd', 'value' => 2, 'full' => '2d'],
-			['rank' => '3', 'suit' => 'c', 'value' => 3, 'full' => '3c']
+			['rank' => 'T', 'suit' => 'h', 'value' => 10, 'full' => 'Th'],
+			['rank' => '9', 'suit' => 'c', 'value' => 9, 'full' => '9c']
 		];
 
-		$suits = array_column($flushCards, 'suit');
-		$suitCounts = array_count_values($suits);
-
-		$result = HandEvaluator::checkFlush($flushCards, $suits, $suitCounts, array_slice($flushCards, 0, 2), array_slice($flushCards, 2, 5));
-		$this->assertNotNull($result);
-		$this->assertEquals('flush', $result['strength']);
-		$this->assertEquals('h', $result['combination'][0]['suit']);
-
-		// Тест без флеша
-		$noFlushCards = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
-			['rank' => 'K', 'suit' => 'd', 'value' => 13, 'full' => 'Kd'],
-			['rank' => 'Q', 'suit' => 'c', 'value' => 12, 'full' => 'Qc'],
-			['rank' => 'J', 'suit' => 's', 'value' => 11, 'full' => 'Js'],
-			['rank' => '9', 'suit' => 'h', 'value' => 9, 'full' => '9h']
-		];
-
-		$suits = array_column($noFlushCards, 'suit');
-		$suitCounts = array_count_values($suits);
-
-		$result = HandEvaluator::checkFlush($noFlushCards, $suits, $suitCounts, array_slice($noFlushCards, 0, 2), array_slice($noFlushCards, 2, 3));
+		$result = $this->callCheckFlush($heroCards, $boardCards);
 		$this->assertNull($result);
 	}
 
