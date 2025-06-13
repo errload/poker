@@ -383,8 +383,6 @@ class HandEvaluatorTest extends TestCase
 
 		$suits = array_column($royalFlushCards, 'suit');
 		$suitCounts = array_count_values($suits);
-		$holeCards = array_slice($royalFlushCards, 0, 2);
-		$boardCards = array_slice($royalFlushCards, 2, 5);
 
 		$result = $this->callCheckRoyalFlush($royalFlushCards, $suitCounts);
 		$this->assertNotNull($result);
@@ -405,7 +403,6 @@ class HandEvaluatorTest extends TestCase
 		];
 
 		$suits = array_column($noRoyalFlushCards, 'suit');
-		$suitCounts = array_count_values($suits);
 		$result = $this->callCheckRoyalFlush($noRoyalFlushCards, $suits);
 		$this->assertNull($result);
 	}
@@ -437,6 +434,7 @@ class HandEvaluatorTest extends TestCase
 
 		$suits = array_column($straightFlushCards, 'suit');
 		$suitCounts = array_count_values($suits);
+
 		$result = $this->callCheckStraightFlush($straightFlushCards, $suitCounts);
 		$this->assertNotNull($result);
 		$this->assertEquals('straight_flush', $result['strength']);
@@ -455,6 +453,7 @@ class HandEvaluatorTest extends TestCase
 
 		$suits = array_column($straightFlushCards, 'suit');
 		$suitCounts = array_count_values($suits);
+
 		$result = $this->callCheckStraightFlush($straightFlushCards, $suitCounts);
 		$this->assertNotNull($result);
 		$this->assertEquals('straight_flush', $result['strength']);
@@ -475,6 +474,7 @@ class HandEvaluatorTest extends TestCase
 
 		$suits = array_column($wheelFlushCards, 'suit');
 		$suitCounts = array_count_values($suits);
+
 		$result = $this->callCheckStraightFlush($wheelFlushCards, $suitCounts);
 		$this->assertNotNull($result);
 		$this->assertEquals('straight_flush', $result['strength']);
@@ -511,6 +511,68 @@ class HandEvaluatorTest extends TestCase
 		$suits = array_column($noStraightFlushCards, 'suit');
 		$suitCounts = array_count_values($suits);
 		$result = $this->callCheckStraightFlush($noStraightFlushCards, $suitCounts);
+		$this->assertNull($result);
+	}
+
+	/**
+	 * Тестирует метод checkQuads()
+	 * Проверяет определение каре
+	 */
+	private function callCheckQuads(array $allCards, array $rankCounts): ?array
+	{
+		$reflector = new \ReflectionClass(HandEvaluator::class);
+		$method = $reflector->getMethod('checkQuads');
+		$method->setAccessible(true);
+		return $method->invokeArgs(null, [$allCards, $rankCounts]);
+	}
+
+	public function testCheckQuads()
+	{
+		// Проверка случая с каре тузов
+		$quadsCards = [
+			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
+			['rank' => 'A', 'suit' => 'd', 'value' => 14, 'full' => 'Ad'],
+			['rank' => 'A', 'suit' => 'c', 'value' => 14, 'full' => 'Ac'],
+			['rank' => 'A', 'suit' => 's', 'value' => 14, 'full' => 'As'],
+			['rank' => 'K', 'suit' => 'h', 'value' => 13, 'full' => 'Kh']
+		];
+
+		$rankCounts = array_count_values(array_column($quadsCards, 'rank'));
+		$result = $this->callCheckQuads($quadsCards, $rankCounts);
+
+		$this->assertNotNull($result);
+		$this->assertEquals('four_of_a_kind', $result['strength']);
+		$this->assertEquals('A', $result['combination'][0]['rank']);
+
+		// Проверка случая с каре троек
+		$quadsCards = [
+			['rank' => 'A', 'suit' => 's', 'value' => 14, 'full' => 'As'],
+			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
+			['rank' => '3', 'suit' => 'h', 'value' => 3, 'full' => '3h'],
+			['rank' => '3', 'suit' => 'd', 'value' => 3, 'full' => '3d'],
+			['rank' => '3', 'suit' => 'c', 'value' => 3, 'full' => '3c'],
+			['rank' => '3', 'suit' => 's', 'value' => 3, 'full' => '3s'],
+			['rank' => '2', 'suit' => 'h', 'value' => 2, 'full' => '2h'],
+		];
+
+		$rankCounts = array_count_values(array_column($quadsCards, 'rank'));
+		$result = $this->callCheckQuads($quadsCards, $rankCounts);
+
+		$this->assertNotNull($result);
+		$this->assertEquals('four_of_a_kind', $result['strength']);
+		$this->assertEquals('3', $result['combination'][0]['rank']);
+
+		// Проверка случая без каре (только 3 карты одного ранга)
+		$noQuadsCards = [
+			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
+			['rank' => 'A', 'suit' => 'd', 'value' => 14, 'full' => 'Ad'],
+			['rank' => 'A', 'suit' => 'c', 'value' => 14, 'full' => 'Ac'],
+			['rank' => 'K', 'suit' => 's', 'value' => 13, 'full' => 'Ks'],
+			['rank' => 'K', 'suit' => 'h', 'value' => 13, 'full' => 'Kh']
+		];
+
+		$rankCounts = array_count_values(array_column($noQuadsCards, 'rank'));
+		$result = $this->callCheckQuads($noQuadsCards, $rankCounts);
 		$this->assertNull($result);
 	}
 
@@ -597,38 +659,6 @@ class HandEvaluatorTest extends TestCase
 		];
 		$values = array_column($noStraightCards, 'value');
 		$result = HandEvaluator::checkStraight($noStraightCards, $values);
-		$this->assertNull($result);
-	}
-
-	/**
-	 * Тестирует метод checkQuads()
-	 * Проверяет определение каре
-	 */
-	public function testCheckQuads()
-	{
-		$quadsCards = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
-			['rank' => 'A', 'suit' => 'd', 'value' => 14, 'full' => 'Ad'],
-			['rank' => 'A', 'suit' => 'c', 'value' => 14, 'full' => 'Ac'],
-			['rank' => 'A', 'suit' => 's', 'value' => 14, 'full' => 'As'],
-			['rank' => 'K', 'suit' => 'h', 'value' => 13, 'full' => 'Kh']
-		];
-		$rankCounts = array_count_values(array_column($quadsCards, 'rank'));
-		$result = HandEvaluator::checkQuads($quadsCards, $rankCounts);
-		$this->assertNotNull($result);
-		$this->assertEquals('four_of_a_kind', $result['strength']);
-		$this->assertEquals('A', $result['combination'][0]['rank']);
-
-		// Нет каре
-		$noQuadsCards = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
-			['rank' => 'A', 'suit' => 'd', 'value' => 14, 'full' => 'Ad'],
-			['rank' => 'A', 'suit' => 'c', 'value' => 14, 'full' => 'Ac'],
-			['rank' => 'K', 'suit' => 's', 'value' => 13, 'full' => 'Ks'],
-			['rank' => 'K', 'suit' => 'h', 'value' => 13, 'full' => 'Kh']
-		];
-		$rankCounts = array_count_values(array_column($noQuadsCards, 'rank'));
-		$result = HandEvaluator::checkQuads($noQuadsCards, $rankCounts);
 		$this->assertNull($result);
 	}
 

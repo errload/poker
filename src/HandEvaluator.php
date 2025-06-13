@@ -550,23 +550,47 @@ class HandEvaluator
 		];
 	}
 
-	public static function checkQuads(array $allCards, array $rankCounts): ?array
+	/**
+	 * Проверяет наличие комбинации "Каре"
+	 * @param array $allCards Массив всех карт
+	 * @param array $rankCounts Ассоциативный массив с количеством карт каждого достоинства
+	 * @return array|null Возвращает массив с информацией о комбинации или null
+	 */
+	private static function checkQuads(array $allCards, array $rankCounts): ?array
 	{
-		if (max($rankCounts) < 4) return null;
+		// Проверяем, есть ли хотя бы один ранг с 4+ картами
+		$quadRank = null;
+		foreach ($rankCounts as $rank => $count) {
+			if ($count >= 4) {
+				$quadRank = $rank;
+				break;
+			}
+		}
 
-		$quadRank = array_search(4, $rankCounts);
+		if ($quadRank === null) {
+			return null;
+		}
+
+		// Выбираем 4 карты, которые входят в каре
+		$quadRank = (string) $quadRank;
 		$quadCards = array_filter($allCards, function($card) use ($quadRank) {
-			return $card['rank'] === $quadRank;
+			return (string) $card['rank'] === $quadRank;
 		});
+
+		// Остальные карты будут кикерами
 		$kickers = array_filter($allCards, function($card) use ($quadRank) {
 			return $card['rank'] !== $quadRank;
 		});
-		usort($kickers, function($a, $b) { return $b['value'] - $a['value']; });
+
+		// Сортируем кикеры по убыванию ценности
+		usort($kickers, function($a, $b) {
+			return $b['value'] - $a['value'];
+		});
 
 		return [
 			'strength' => 'four_of_a_kind',
-			'description' => 'Four of a Kind ('.$quadRank.')',
-			'combination' => $quadCards,
+			'description' => 'Four of a Kind (' . $quadRank . ')',
+			'combination' => array_slice($quadCards, 0, 4),
 			'kickers' => array_slice($kickers, 0, 1),
 			'nut_status' => $quadRank == 'A' ? 'absolute_nuts' : 'strong'
 		];
