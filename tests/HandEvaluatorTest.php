@@ -383,7 +383,6 @@ class HandEvaluatorTest extends TestCase
 
 		$suits = array_column($royalFlushCards, 'suit');
 		$suitCounts = array_count_values($suits);
-
 		$result = $this->callCheckRoyalFlush($royalFlushCards, $suitCounts);
 		$this->assertNotNull($result);
 		$this->assertEquals('royal_flush', $result['strength']);
@@ -434,7 +433,6 @@ class HandEvaluatorTest extends TestCase
 
 		$suits = array_column($straightFlushCards, 'suit');
 		$suitCounts = array_count_values($suits);
-
 		$result = $this->callCheckStraightFlush($straightFlushCards, $suitCounts);
 		$this->assertNotNull($result);
 		$this->assertEquals('straight_flush', $result['strength']);
@@ -453,7 +451,6 @@ class HandEvaluatorTest extends TestCase
 
 		$suits = array_column($straightFlushCards, 'suit');
 		$suitCounts = array_count_values($suits);
-
 		$result = $this->callCheckStraightFlush($straightFlushCards, $suitCounts);
 		$this->assertNotNull($result);
 		$this->assertEquals('straight_flush', $result['strength']);
@@ -474,7 +471,6 @@ class HandEvaluatorTest extends TestCase
 
 		$suits = array_column($wheelFlushCards, 'suit');
 		$suitCounts = array_count_values($suits);
-
 		$result = $this->callCheckStraightFlush($wheelFlushCards, $suitCounts);
 		$this->assertNotNull($result);
 		$this->assertEquals('straight_flush', $result['strength']);
@@ -539,7 +535,6 @@ class HandEvaluatorTest extends TestCase
 
 		$rankCounts = array_count_values(array_column($quadsCards, 'rank'));
 		$result = $this->callCheckQuads($quadsCards, $rankCounts);
-
 		$this->assertNotNull($result);
 		$this->assertEquals('four_of_a_kind', $result['strength']);
 		$this->assertEquals('A', $result['combination'][0]['rank']);
@@ -557,7 +552,6 @@ class HandEvaluatorTest extends TestCase
 
 		$rankCounts = array_count_values(array_column($quadsCards, 'rank'));
 		$result = $this->callCheckQuads($quadsCards, $rankCounts);
-
 		$this->assertNotNull($result);
 		$this->assertEquals('four_of_a_kind', $result['strength']);
 		$this->assertEquals('3', $result['combination'][0]['rank']);
@@ -573,6 +567,67 @@ class HandEvaluatorTest extends TestCase
 
 		$rankCounts = array_count_values(array_column($noQuadsCards, 'rank'));
 		$result = $this->callCheckQuads($noQuadsCards, $rankCounts);
+		$this->assertNull($result);
+	}
+
+	/**
+	 * Тестирует метод checkFullHouse()
+	 * Проверяет определение фулл-хауса
+	 */
+	private function callCheckFullHouse(array $allCards, array $rankCounts): ?array
+	{
+		$reflector = new \ReflectionClass(HandEvaluator::class);
+		$method = $reflector->getMethod('checkFullHouse');
+		$method->setAccessible(true);
+		return $method->invokeArgs(null, [$allCards, $rankCounts]);
+	}
+
+	public function testCheckFullHouse()
+	{
+		// Проверяем корректное определение фулл хауса (тройка A + пара K)
+		$fullHouseCards = [
+			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
+			['rank' => 'A', 'suit' => 'd', 'value' => 14, 'full' => 'Ad'],
+			['rank' => 'A', 'suit' => 'c', 'value' => 14, 'full' => 'Ac'],
+			['rank' => 'K', 'suit' => 's', 'value' => 13, 'full' => 'Ks'],
+			['rank' => 'K', 'suit' => 'h', 'value' => 13, 'full' => 'Kh']
+		];
+		$rankCounts = array_count_values(array_column($fullHouseCards, 'rank'));
+		$result = $this->callCheckFullHouse($fullHouseCards, $rankCounts);
+		$this->assertNotNull($result);
+		$this->assertEquals('full_house', $result['strength']);
+		$this->assertEquals('A', $result['combination'][0]['rank']);
+		$this->assertEquals('K', $result['combination'][3]['rank']);
+
+		// Тест 1: Корректный фулл-хаус (тройка 4 + пара J)
+		$fullHouseCards = [
+			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
+			['rank' => 'K', 'suit' => 's', 'value' => 13, 'full' => 'Ks'],
+			['rank' => 'J', 'suit' => 'h', 'value' => 11, 'full' => 'Jh'],
+			['rank' => 'J', 'suit' => 's', 'value' => 11, 'full' => 'Js'],
+			['rank' => '4', 'suit' => 'h', 'value' => 4, 'full' => '4h'],
+			['rank' => '4', 'suit' => 'd', 'value' => 4, 'full' => '4d'],
+			['rank' => '4', 'suit' => 's', 'value' => 4, 'full' => '4s'],
+		];
+
+		$rankCounts = array_count_values(array_column($fullHouseCards, 'rank'));
+		$result = $this->callCheckFullHouse($fullHouseCards, $rankCounts);
+
+		$this->assertNotNull($result);
+		$this->assertEquals('full_house', $result['strength']);
+		$this->assertEquals('4', $result['combination'][0]['rank']);
+		$this->assertEquals('J', $result['combination'][3]['rank']);
+
+		// Нет фулл-хауса
+		$noFullHouseCards = [
+			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
+			['rank' => 'A', 'suit' => 'd', 'value' => 14, 'full' => 'Ad'],
+			['rank' => 'K', 'suit' => 'c', 'value' => 13, 'full' => 'Kc'],
+			['rank' => 'K', 'suit' => 's', 'value' => 13, 'full' => 'Ks'],
+			['rank' => 'Q', 'suit' => 'h', 'value' => 12, 'full' => 'Qh']
+		];
+		$rankCounts = array_count_values(array_column($noFullHouseCards, 'rank'));
+		$result = $this->callCheckFullHouse($noFullHouseCards, $rankCounts);
 		$this->assertNull($result);
 	}
 
@@ -659,39 +714,6 @@ class HandEvaluatorTest extends TestCase
 		];
 		$values = array_column($noStraightCards, 'value');
 		$result = HandEvaluator::checkStraight($noStraightCards, $values);
-		$this->assertNull($result);
-	}
-
-	/**
-	 * Тестирует метод checkFullHouse()
-	 * Проверяет определение фулл-хауса
-	 */
-	public function testCheckFullHouse()
-	{
-		$fullHouseCards = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
-			['rank' => 'A', 'suit' => 'd', 'value' => 14, 'full' => 'Ad'],
-			['rank' => 'A', 'suit' => 'c', 'value' => 14, 'full' => 'Ac'],
-			['rank' => 'K', 'suit' => 's', 'value' => 13, 'full' => 'Ks'],
-			['rank' => 'K', 'suit' => 'h', 'value' => 13, 'full' => 'Kh']
-		];
-		$rankCounts = array_count_values(array_column($fullHouseCards, 'rank'));
-		$result = HandEvaluator::checkFullHouse($fullHouseCards, $rankCounts);
-		$this->assertNotNull($result);
-		$this->assertEquals('full_house', $result['strength']);
-		$this->assertEquals('A', $result['combination'][0]['rank']);
-		$this->assertEquals('K', $result['combination'][3]['rank']);
-
-		// Нет фулл-хауса
-		$noFullHouseCards = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
-			['rank' => 'A', 'suit' => 'd', 'value' => 14, 'full' => 'Ad'],
-			['rank' => 'K', 'suit' => 'c', 'value' => 13, 'full' => 'Kc'],
-			['rank' => 'K', 'suit' => 's', 'value' => 13, 'full' => 'Ks'],
-			['rank' => 'Q', 'suit' => 'h', 'value' => 12, 'full' => 'Qh']
-		];
-		$rankCounts = array_count_values(array_column($noFullHouseCards, 'rank'));
-		$result = HandEvaluator::checkFullHouse($noFullHouseCards, $rankCounts);
 		$this->assertNull($result);
 	}
 

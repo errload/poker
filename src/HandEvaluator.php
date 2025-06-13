@@ -311,16 +311,16 @@ class HandEvaluator
 			return $quadsResult;
 		}
 
+		if ($fullHouseResult = self::checkFullHouse($allCards, $rankCounts)) {
+			return $fullHouseResult;
+		}
+
 		if ($flushResult = self::checkFlush($allCards, $suits, $suitCounts, $holeCards, $boardCards)) {
 			return $flushResult;
 		}
 
 		if ($straightResult = self::checkStraight($allCards, $values)) {
 			return $straightResult;
-		}
-
-		if ($fullHouseResult = self::checkFullHouse($allCards, $rankCounts)) {
-			return $fullHouseResult;
 		}
 
 		if ($tripsResult = self::checkTrips($allCards, $rankCounts, $holeCards, $boardCards)) {
@@ -596,52 +596,81 @@ class HandEvaluator
 		];
 	}
 
-	public static function checkFullHouse(array $allCards, array $rankCounts): ?array
+	/**
+	 * Проверяет, есть ли среди карт комбинация "Фулл Хаус" (тройка + пара)
+	 * @param array $allCards Все карты игрока и общие карты стола
+	 * @param array $rankCounts Ассоциативный массив с количеством карт каждого ранга
+	 * @return array|null Возвращает массив с информацией о комбинации или null
+	 */
+	private static function checkFullHouse(array $allCards, array $rankCounts): ?array
 	{
+		// Ищем все тройки и пары
 		$trips = [];
 		$pairs = [];
+
 		foreach ($rankCounts as $rank => $count) {
-			if ($count >= 3) $trips[] = $rank;
-			if ($count >= 2) $pairs[] = $rank;
+			if ($count >= 3) {
+				$trips[] = $rank;
+			}
+			if ($count >= 2) {
+				$pairs[] = $rank;
+			}
 		}
-		$trips = array_unique($trips);
-		$pairs = array_unique($pairs);
+
+		// Сортируем по убыванию
 		rsort($trips);
 		rsort($pairs);
 
-		if (count($trips) < 1 || (count($pairs) < 2 && count($trips) < 2)) {
+		// Удаляем дубликаты (на случай если тройка также считается парой)
+		$pairs = array_unique($pairs);
+
+		// Для фулл-хауса нужно: Хотя бы одна тройка И хотя бы одна другая пара или вторая тройка
+		if (empty($trips) || (count($pairs) < 1 && count($trips) < 2)) {
 			return null;
 		}
 
-		$fullHouseTrips = $trips[0];
-		$fullHousePair = null;
+		// Выбираем старшую тройку
+		$tripRank = $trips[0];
 
-		foreach ($pairs as $pair) {
-			if ($pair != $fullHouseTrips) {
-				$fullHousePair = $pair;
+		// Выбираем старшую пару, отличную от тройки
+		$pairRank = null;
+		foreach ($pairs as $rank) {
+			if ($rank != $tripRank) {
+				$pairRank = $rank;
 				break;
 			}
 		}
 
-		if (!$fullHousePair && count($trips) >= 2) {
-			$fullHousePair = $trips[1];
+		// Если не нашли отдельную пару, но есть вторая тройка - используем её как пару
+		if (!$pairRank && count($trips) > 1) {
+			$pairRank = $trips[1];
 		}
 
-		if (!$fullHousePair) return null;
+		if (!$pairRank) {
+			return null;
+		}
 
-		$tripCards = array_filter($allCards, function($card) use ($fullHouseTrips) {
-			return $card['rank'] === $fullHouseTrips;
-		});
-		$pairCards = array_filter($allCards, function($card) use ($fullHousePair) {
-			return $card['rank'] === $fullHousePair;
-		});
+		// Собираем карты для комбинации
+		$tripCards = array_values(array_filter($allCards, fn($card) => $card['rank'] == $tripRank));
+		$pairCards = array_values(array_filter($allCards, fn($card) => $card['rank'] == $pairRank));
+
+		// Проверяем, что карт достаточно
+		if (count($tripCards) < 3 || count($pairCards) < 2) {
+			return null;
+		}
+
+		// Формируем комбинацию (3 старшие карты из тройки и 2 старшие из пары)
+		$combination = array_merge(
+			array_slice($tripCards, 0, 3),
+			array_slice($pairCards, 0, 2)
+		);
 
 		return [
 			'strength' => 'full_house',
-			'description' => 'Full House ('.$fullHouseTrips.' over '.$fullHousePair.')',
-			'combination' => array_merge(array_slice($tripCards, 0, 3), array_slice($pairCards, 0, 2)),
+			'description' => 'Full House (' . $tripRank . ' over ' . $pairRank . ')',
+			'combination' => $combination,
 			'kickers' => [],
-			'nut_status' => $fullHouseTrips == 'A' ? 'absolute_nuts' : 'strong'
+			'nut_status' => $tripRank == 'A' ? 'absolute_nuts' : 'strong'
 		];
 	}
 
