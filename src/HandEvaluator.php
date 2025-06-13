@@ -10,8 +10,15 @@ class HandEvaluator
 		'T' => 10, 'J' => 11, 'Q' => 12, 'K' => 13, 'A' => 14
 	];
 
+	/**
+	 * Оценивает силу руки (комбинации карт) в покере
+	 * @param \PDO $pdo Объект подключения к базе данных
+	 * @param int $handId ID раздачи в базе данных
+	 * @return array Массив с результатами оценки
+	 */
 	public static function evaluateHand(\PDO $pdo, int $handId): array
 	{
+		// Запрос данных раздачи из базы данных
 		$handStmt = $pdo->prepare("
 			SELECT hero_cards, board, is_completed 
 			FROM hands 
@@ -20,35 +27,42 @@ class HandEvaluator
 		$handStmt->execute([':hand_id' => $handId]);
 		$handData = $handStmt->fetch(\PDO::FETCH_ASSOC);
 
+		// Проверка существования раздачи
 		if (!$handData) {
 			return ['strength' => 'invalid', 'description' => 'Distribution not found'];
 		}
 
+		// Извлечение данных о картах
 		$heroCardsString = $handData['hero_cards'] ?? '';
 		$boardString = $handData['board'] ?? '';
 		$isCompleted = (bool) $handData['is_completed'];
 
+		// Парсинг строк карт в массив
 		$parsedHeroCards = self::parseCards($heroCardsString);
 		$parsedBoardCards = self::parseCards($boardString);
 
-		// Проверяем валидность карт героя
+		// Проверяем валидность карт героя (должно быть ровно 2 карты)
 		if (count($parsedHeroCards) !== 2) {
 			return ['strength' => 'invalid', 'description' => 'Invalid cards'];
 		}
 
+		// Если на столе нет карт (префлоп), оцениваем силу стартовой руки
 		if (empty($parsedBoardCards)) {
 			return self::evaluatePreflopHand($parsedHeroCards);
 		}
 
+		// Объединяем карты героя и карты на столе для оценки комбинации
 		$allCards = array_merge($parsedHeroCards, $parsedBoardCards);
 		$result = self::evaluateCombination($allCards, $parsedHeroCards, $parsedBoardCards);
 
+		// Для незавершенных раздач (флоп/терн) оцениваем возможные дро
 		if (!$isCompleted && count($parsedBoardCards) < 5) {
 			$draws = self::evaluateDraws($parsedHeroCards, $parsedBoardCards);
+
 			if (!empty($draws['draws'])) {
 				$result['draws'] = $draws['draws'];
 				$result['outs'] = $draws['outs'];
-				$result['description'] .= ' + ' . implode(', ', $draws['draws']) . ' (' . $draws['outs'] . ' аутов)';
+				$result['description'] .= ' + ' . implode(', ', $draws['draws']) . ' (' . $draws['outs'] . ' outs)';
 			}
 		}
 
@@ -285,6 +299,10 @@ class HandEvaluator
 		arsort($suitCounts);
 
 		// Проверка комбинаций от старшей к младшей
+		if ($royalFlushResult = self::checkRoyalFlush($allCards, $suitCounts)) {
+			return $royalFlushResult;
+		}
+
 		if ($flushResult = self::checkFlush($allCards, $suits, $suitCounts, $holeCards, $boardCards)) {
 			return $flushResult;
 		}
@@ -314,6 +332,69 @@ class HandEvaluator
 		}
 
 		return self::checkHighCard($allCards, $holeCards, $boardCards);
+	}
+
+	/**
+	 * Проверяет, есть ли у игрока роял-флэш
+	 *
+	 * @param array $allCards Все карты (карты игрока + общие карты на столе).
+	 * @param array $suits Массив всех мастей в игре (например, ['hearts', 'diamonds', 'clubs', 'spades']).
+	 * @param array $suitCounts Количество карт каждой масти (например, ['hearts' => 5, 'spades' => 2]).
+	 * @param array $holeCards Карты игрока (2 карты в холдеме).
+	 * @param array $boardCards Общие карты на столе (5 карт в тexas hold'em).
+	 *
+	 * @return array|null Возвращает информацию о роял-флэше или null
+	 */
+	private static function checkRoyalFlush(array $allCards, array $suitCounts): ?array {
+		// Проверяем, есть ли масть с 5+ картами (возможный флеш)
+		foreach ($suitCounts as $suit => $count) {
+			if ($count >= 5) {
+				// Фильтруем карты, оставляя только текущую масть
+				$flushCards = array_filter($allCards, function($card) use ($suit) {
+					return $card['suit'] === $suit;
+				});
+
+				// Сортируем карты по убыванию (от туза до младших)
+				usort($flushCards, function($a, $b) {
+					return $b['value'] - $a['value'];
+				});
+
+				// Проверяем наличие всех карт роял-флэша (A, K, Q, J, 10)
+				$royalFlushRanks = ['A', 'K', 'Q', 'J', 'T'];
+				$flushRanks = array_column($flushCards, 'rank');
+
+				$hasRoyalFlush = true;
+				foreach ($royalFlushRanks as $rank) {
+					if (!in_array($rank, $flushRanks)) {
+						$hasRoyalFlush = false;
+						break;
+					}
+				}
+
+				// Формируем массив именно из 5 карт роял-флэша
+				if ($hasRoyalFlush) {
+					$royalFlushCards = [];
+					foreach ($royalFlushRanks as $rank) {
+						foreach ($flushCards as $card) {
+							if ($card['rank'] === $rank) {
+								$royalFlushCards[] = $card;
+								break;
+							}
+						}
+					}
+
+					return [
+						'strength' => 'royal_flush',
+						'description' => 'Royal Flush (' . $suit . ')',
+						'combination' => $royalFlushCards,
+						'kickers' => [],
+						'nut_status' => 'nut'
+					];
+				}
+			}
+		}
+
+		return null;
 	}
 
 	public static function checkFlush(array $allCards, array $suits, array $suitCounts, array $holeCards, array $boardCards): ?array

@@ -7,6 +7,68 @@ use PHPUnit\Framework\TestCase;
 class HandEvaluatorTest extends TestCase
 {
 	/**
+	 * Тестирует метод evaluateHand()
+	 * Оценивает силы руки в покере
+	 */
+	public function testEvaluateHand()
+	{
+		// Создаем и настраиваем мок-объекты PDO и PDOStatement для изоляции теста от реальной БД
+		$pdo = $this->createMock(\PDO::class);
+		$stmt = $this->createMock(\PDOStatement::class);
+		$pdo->method('prepare')->willReturn($stmt);
+
+		// Тест для префлопа (карты героя без карт на столе)
+		$stmt->method('fetch')->willReturn([
+			'hero_cards' => 'Ah Kh',
+			'board' => '',
+			'is_completed' => false
+		]);
+		$preflopResult = HandEvaluator::evaluateHand($pdo, 1);
+		$this->assertEquals('premium', $preflopResult['strength'],
+			'AK одномастные должны определяться как премиум-рука на префлопе');
+
+		// Тест для флопа с флеш-комбинацией
+		$stmt->method('fetch')->willReturn([
+			'hero_cards' => 'Ah Kh',   // 2 червы в руке
+			'board' => 'Qh Jh 9h',    // 3 червы на столе - флеш
+			'is_completed' => false    // Раздача не завершена (возможны дро)
+		]);
+		$flopResult = HandEvaluator::evaluateHand($pdo, 2);
+		$this->assertEquals('flush', $flopResult['strength'],
+			'5 карт одной масти должны определяться как флеш');
+
+		// Тест для терна с дро на флеш
+		$stmt->method('fetch')->willReturn([
+			'hero_cards' => 'Th 9h',   // 2 червы в руке
+			'board' => 'Qh Jh 2d 3c', // 2 червы на столе (4 всего) - дро на флеш
+			'is_completed' => false    // Раздача не завершена
+		]);
+		$turnResult = HandEvaluator::evaluateHand($pdo, 3);
+		$this->assertArrayHasKey('draws', $turnResult,
+			'Для незавершенных комбинаций должен возвращаться массив draws');
+		$this->assertContains('flush_draw', $turnResult['draws'],
+			'4 карты одной масти должны определяться как дро на флеш');
+
+		// Тест для невалидных карт (только 1 карта в руке)
+		$stmt->method('fetch')->willReturn([
+			'hero_cards' => 'Ah',     // Только 1 карта - невалидная рука
+			'board' => '',             // Пустой стол
+			'is_completed' => false    // Раздача не завершена
+		]);
+		$invalidResult = HandEvaluator::evaluateHand($pdo, 4);
+		$this->assertEquals('invalid', $invalidResult['strength'],
+			'Рука с менее чем 2 картами должна быть невалидной');
+
+		// Тест для несуществующей раздачи
+		$stmt->method('fetch')->willReturn(false); // Имитация отсутствия данных
+		$notFoundResult = HandEvaluator::evaluateHand($pdo, 999);
+		$this->assertEquals('invalid', $notFoundResult['strength'],
+			'Несуществующая раздача должна возвращать invalid');
+		$this->assertEquals('Distribution not found', $notFoundResult['description'],
+			'Для несуществующей раздачи должно быть соответствующее описание');
+	}
+
+	/**
 	 * Тестирует метод parseCards()
 	 * Проверяет парсинг карт
 	 */
@@ -65,7 +127,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => 'A', 'suit' => 's', 'value' => 14]
 		];
 		$result = $this->callEvaluatePreflopHand($premiumPair);
-		print_r($result);
 		$this->assertEquals('premium', $result['strength']);
 		$this->assertStringContainsString('Premium pair AA', $result['description']);
 
@@ -75,7 +136,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => 'K', 'suit' => 'h', 'value' => 13]
 		];
 		$result = $this->callEvaluatePreflopHand($premiumSuited);
-		print_r($result);
 		$this->assertEquals('premium', $result['strength']);
 		$this->assertStringContainsString('Premium hand AKs', $result['description']);
 
@@ -85,7 +145,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => 'K', 'suit' => 'd', 'value' => 13]
 		];
 		$result = $this->callEvaluatePreflopHand($premiumOffsuit);
-		print_r($result);
 		$this->assertEquals('premium', $result['strength']);
 		$this->assertStringContainsString('Premium hand AKo', $result['description']);
 
@@ -95,7 +154,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => 'J', 'suit' => 'd', 'value' => 11]
 		];
 		$result = $this->callEvaluatePreflopHand($strongPair);
-		print_r($result);
 		$this->assertEquals('strong', $result['strength']);
 		$this->assertStringContainsString('Strong pair JJ', $result['description']);
 
@@ -105,7 +163,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => 'J', 'suit' => 'h', 'value' => 11]
 		];
 		$result = $this->callEvaluatePreflopHand($aceWithKicker);
-		print_r($result);
 		$this->assertEquals('strong', $result['strength']);
 		$this->assertStringContainsString('Ace with kicker AJs', $result['description']);
 
@@ -115,7 +172,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => 'Q', 'suit' => 'd', 'value' => 12]
 		];
 		$result = $this->callEvaluatePreflopHand($aceWithKicker);
-		print_r($result);
 		$this->assertEquals('medium', $result['strength']);
 		$this->assertStringContainsString('Ace with kicker AQo', $result['description']);
 
@@ -125,7 +181,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => 'Q', 'suit' => 'h', 'value' => 12]
 		];
 		$result = $this->callEvaluatePreflopHand($highSuitedCards);
-		print_r($result);
 		$this->assertEquals('strong', $result['strength']);
 		$this->assertStringContainsString('Strong suited KQs', $result['description']);
 
@@ -135,7 +190,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => 'Q', 'suit' => 'd', 'value' => 12]
 		];
 		$result = $this->callEvaluatePreflopHand($highCards);
-		print_r($result);
 		$this->assertEquals('medium', $result['strength']);
 		$this->assertStringContainsString('Medium offsuit KQo', $result['description']);
 
@@ -145,7 +199,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => 'J', 'suit' => 's', 'value' => 11]
 		];
 		$result = $this->callEvaluatePreflopHand($highCards);
-		print_r($result);
 		$this->assertEquals('medium', $result['strength']);
 		$this->assertStringContainsString('Medium suited QJs', $result['description']);
 
@@ -155,7 +208,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => 'J', 'suit' => 'd', 'value' => 11]
 		];
 		$result = $this->callEvaluatePreflopHand($highCards);
-		print_r($result);
 		$this->assertEquals('marginal', $result['strength']);
 		$this->assertStringContainsString('Marginal offsuit QJo', $result['description']);
 
@@ -165,7 +217,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => '8', 'suit' => 'd', 'value' => 8]
 		];
 		$result = $this->callEvaluatePreflopHand($mediumPair);
-		print_r($result);
 		$this->assertEquals('medium', $result['strength']);
 		$this->assertStringContainsString('Medium pair 88', $result['description']);
 
@@ -175,7 +226,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => '5', 'suit' => 'h', 'value' => 5]
 		];
 		$result = $this->callEvaluatePreflopHand($speculativeSuited);
-		print_r($result);
 		$this->assertEquals('speculative', $result['strength']);
 		$this->assertStringContainsString('Speculative suited A5s', $result['description']);
 
@@ -185,7 +235,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => 'T', 'suit' => 'h', 'value' => 10]
 		];
 		$result = $this->callEvaluatePreflopHand($suitedConnector);
-		print_r($result);
 		$this->assertEquals('speculative', $result['strength']);
 		$this->assertStringContainsString('Speculative suited JTs', $result['description']);
 
@@ -195,7 +244,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => '8', 'suit' => 'h', 'value' => 8]
 		];
 		$result = $this->callEvaluatePreflopHand($suitedConnector);
-		print_r($result);
 		$this->assertEquals('marginal', $result['strength']);
 		$this->assertStringContainsString('Marginal suited 98s', $result['description']);
 
@@ -205,7 +253,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => '2', 'suit' => 'h', 'value' => 2]
 		];
 		$result = $this->callEvaluatePreflopHand($weakSuited);
-		print_r($result);
 		$this->assertEquals('weak', $result['strength']);
 		$this->assertStringContainsString('Weak suited 72', $result['description']);
 
@@ -215,7 +262,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => '9', 'suit' => 'h', 'value' => 9]
 		];
 		$result = $this->callEvaluatePreflopHand($marginalSuited);
-		print_r($result);
 		$this->assertEquals('marginal', $result['strength']);
 		$this->assertStringContainsString('Marginal suited K9s', $result['description']);
 
@@ -225,7 +271,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => '5', 'suit' => 'd', 'value' => 5]
 		];
 		$result = $this->callEvaluatePreflopHand($speculativeOffsuit);
-		print_r($result);
 		$this->assertEquals('marginal', $result['strength']);
 		$this->assertStringContainsString('Marginal high', $result['description']);
 
@@ -235,7 +280,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => '4', 'suit' => 'd', 'value' => 4]
 		];
 		$result = $this->callEvaluatePreflopHand($weakPair);
-		print_r($result);
 		$this->assertEquals('weak', $result['strength']);
 		$this->assertStringContainsString('Weak pair 44', $result['description']);
 
@@ -245,7 +289,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => '9', 'suit' => 'd', 'value' => 9]
 		];
 		$result = $this->callEvaluatePreflopHand($marginalOffsuit);
-		print_r($result);
 		$this->assertEquals('marginal', $result['strength']);
 		$this->assertStringContainsString('Marginal offsuit K9', $result['description']);
 
@@ -255,7 +298,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => 'T', 'suit' => 'd', 'value' => 10]
 		];
 		$result = $this->callEvaluatePreflopHand($connectorOffsuit);
-		print_r($result);
 		$this->assertEquals('marginal', $result['strength']);
 		$this->assertStringContainsString('Marginal offsuit JTo', $result['description']);
 
@@ -265,7 +307,6 @@ class HandEvaluatorTest extends TestCase
 			['rank' => '2', 'suit' => 'd', 'value' => 2]
 		];
 		$result = $this->callEvaluatePreflopHand($weakHand);
-		print_r($result);
 		$this->assertEquals('weak', $result['strength']);
 		$this->assertStringContainsString('Weak hand 72o', $result['description']);
 	}
@@ -313,6 +354,60 @@ class HandEvaluatorTest extends TestCase
 		];
 		$result = HandEvaluator::evaluateCombination($setCards, array_slice($setCards, 0, 2), array_slice($setCards, 2, 3));
 		$this->assertEquals('three_of_a_kind', $result['strength']);
+	}
+
+	/**
+	 * Тестирует метод checkRoyalFlush()
+	 * Проверяет определение роял-флэша
+	 */
+	private function callCheckRoyalFlush(array $allCards, array $suitCounts): ?array
+	{
+		$reflector = new \ReflectionClass(HandEvaluator::class);
+		$method = $reflector->getMethod('checkRoyalFlush');
+		$method->setAccessible(true);
+		return $method->invokeArgs(null, [$allCards, $suitCounts] ?? null);
+	}
+
+	public function testCheckRoyalFlush()
+	{
+		// Роял-флэш червы
+		$royalFlushCards = [
+			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
+			['rank' => 'K', 'suit' => 'h', 'value' => 13, 'full' => 'Kh'],
+			['rank' => 'Q', 'suit' => 'h', 'value' => 12, 'full' => 'Qh'],
+			['rank' => 'J', 'suit' => 'h', 'value' => 11, 'full' => 'Jh'],
+			['rank' => 'T', 'suit' => 'h', 'value' => 10, 'full' => 'Th'],
+			['rank' => '2', 'suit' => 'd', 'value' => 2, 'full' => '2d'],
+			['rank' => '3', 'suit' => 'c', 'value' => 3, 'full' => '3c']
+		];
+
+		$suits = array_column($royalFlushCards, 'suit');
+		$suitCounts = array_count_values($suits);
+		$holeCards = array_slice($royalFlushCards, 0, 2);
+		$boardCards = array_slice($royalFlushCards, 2, 5);
+
+		$result = $this->callCheckRoyalFlush($royalFlushCards, $suitCounts);
+		$this->assertNotNull($result);
+		$this->assertEquals('royal_flush', $result['strength']);
+		$this->assertCount(5, $result['combination']);
+		$this->assertEquals('h', $result['combination'][0]['suit']);
+		$this->assertEquals('nut', $result['nut_status']);
+
+		// Нет роял-флэша (не хватает 10)
+		$noRoyalFlushCards = [
+			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
+			['rank' => 'K', 'suit' => 'h', 'value' => 13, 'full' => 'Kh'],
+			['rank' => 'Q', 'suit' => 'h', 'value' => 12, 'full' => 'Qh'],
+			['rank' => 'J', 'suit' => 'h', 'value' => 11, 'full' => 'Jh'],
+			['rank' => '9', 'suit' => 'h', 'value' => 9, 'full' => '9h'],
+			['rank' => '2', 'suit' => 'd', 'value' => 2, 'full' => '2d'],
+			['rank' => '3', 'suit' => 'c', 'value' => 3, 'full' => '3c']
+		];
+
+		$suits = array_column($noRoyalFlushCards, 'suit');
+		$suitCounts = array_count_values($suits);
+		$result = $this->callCheckRoyalFlush($noRoyalFlushCards, $suits);
+		$this->assertNull($result);
 	}
 
 	/**
@@ -622,62 +717,5 @@ class HandEvaluatorTest extends TestCase
 		$result = HandEvaluator::evaluateDraws($holeCards, $boardCards);
 		$this->assertContains('open_ended_straight_draw', $result['draws']);
 		$this->assertEquals(8, $result['outs']);
-	}
-
-	/**
-	 * Тестирует метод evaluateHand()
-	 * Проверяет полную оценку руки с разными сценариями
-	 */
-	public function testEvaluateHand()
-	{
-		// Создаем мок PDO для тестирования
-		$pdo = $this->createMock(\PDO::class);
-		$stmt = $this->createMock(\PDOStatement::class);
-
-		// Настраиваем мок для префлопа
-		$pdo->method('prepare')->willReturn($stmt);
-
-		// Тест для префлопа
-		$stmt->method('fetch')->willReturn([
-			'hero_cards' => 'Ah Kh',
-			'board' => '',
-			'is_completed' => false
-		]);
-		$preflopResult = HandEvaluator::evaluateHand($pdo, 1);
-		$this->assertEquals('premium', $preflopResult['strength']);
-
-		// Тест для флопа с флешем
-		$stmt->method('fetch')->willReturn([
-			'hero_cards' => 'Ah Kh',
-			'board' => 'Qh Jh 9h',
-			'is_completed' => false
-		]);
-		$flopResult = HandEvaluator::evaluateHand($pdo, 2);
-		$this->assertEquals('flush', $flopResult['strength']);
-
-		// Тест для терна с дро
-		$stmt->method('fetch')->willReturn([
-			'hero_cards' => 'Th 9h',
-			'board' => 'Qh Jh 2d 3c',
-			'is_completed' => false
-		]);
-		$turnResult = HandEvaluator::evaluateHand($pdo, 3);
-		$this->assertArrayHasKey('draws', $turnResult);
-		$this->assertContains('flush_draw', $turnResult['draws']);
-
-		// Тест для невалидных карт
-		$stmt->method('fetch')->willReturn([
-			'hero_cards' => 'Ah',
-			'board' => '',
-			'is_completed' => false
-		]);
-		$invalidResult = HandEvaluator::evaluateHand($pdo, 4);
-		$this->assertEquals('invalid', $invalidResult['strength']);
-
-		// Тест для несуществующей раздачи
-		$stmt->method('fetch')->willReturn(false);
-		$notFoundResult = HandEvaluator::evaluateHand($pdo, 999);
-		$this->assertEquals('invalid', $notFoundResult['strength']);
-		$this->assertEquals('Раздача не найдена', $notFoundResult['description']);
 	}
 }
