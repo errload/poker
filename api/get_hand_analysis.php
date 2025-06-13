@@ -1,23 +1,27 @@
 <?php
+
+use FourBet\HandEvaluator;
+
 header('Content-Type: application/json');
 require_once __DIR__.'/../db/config.php';
+require_once __DIR__ . '/../src/HandEvaluator.php';
 
 $response = ['success' => false, 'error' => null];
 
 try {
 	// Validate input
-	$input = json_decode(file_get_contents('php://input'), true);
-	if (!$input) throw new Exception('Invalid JSON input');
+//	$input = json_decode(file_get_contents('php://input'), true);
+//	if (!$input) throw new Exception('Invalid JSON input');
 
 	// Debug input (uncomment for testing)
-//	$input = [
-//		'hand_id' => 2,
-//		'current_street' => 'flop',
-//		'hero_position' => 'BTN',
-//		'hero_id' => '999999',
-//		'hero_nickname' => 'Player999999',
-//		'stady' => 'early'
-//	];
+	$input = [
+		'hand_id' => 4,
+		'current_street' => 'flop',
+		'hero_position' => 'BTN',
+		'hero_id' => '999999',
+		'hero_nickname' => 'Player999999',
+		'stady' => 'early'
+	];
 
 	$required = ['hand_id', 'current_street', 'hero_position'];
 	foreach ($required as $field) {
@@ -39,6 +43,11 @@ try {
 			PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
 		]
 	);
+
+	$result = HandEvaluator::evaluateHand($pdo, $input['hand_id']);
+	print_r($result);
+
+	die();
 
 	// 1. Get basic hand information
 	$handStmt = $pdo->prepare("

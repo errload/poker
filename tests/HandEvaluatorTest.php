@@ -6,14 +6,10 @@ use PHPUnit\Framework\TestCase;
 
 class HandEvaluatorTest extends TestCase
 {
-	/**
-	 * Тестирует метод parseCards()
-	 * Проверяет корректность парсинга строки с картами в массив
-	 */
 	public function testParseCards()
 	{
-		// Тест с валидными картами
-		$cards = "Ah Ks Qd Jc Th";
+		// валидные карты
+		$cards = 'Ah Ks Qd Jc Th';
 		$parsed = HandEvaluator::parseCards($cards);
 
 		$this->assertCount(5, $parsed);
@@ -21,13 +17,17 @@ class HandEvaluatorTest extends TestCase
 		$this->assertEquals('h', $parsed[0]['suit']);
 		$this->assertEquals(14, $parsed[0]['value']);
 
-		// Тест с пустой строкой
-		$empty = HandEvaluator::parseCards("");
+		// пустая строка
+		$empty = HandEvaluator::parseCards('');
 		$this->assertEmpty($empty);
 
-		// Тест с невалидными картами
-		$invalid = HandEvaluator::parseCards("Xy 11 ZZ");
+		// невалидные карты
+		$invalid = HandEvaluator::parseCards('Xy 11 ZZ');
 		$this->assertEmpty($invalid);
+
+		// проверка обработки дубликатов карт
+		$duplicates = HandEvaluator::parseCards("Ah Ah Ks Qd Jc");
+		$this->assertEmpty($duplicates);
 	}
 
 	/**

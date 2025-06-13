@@ -12,7 +12,6 @@ class HandEvaluator
 
 	public static function evaluateHand(\PDO $pdo, int $handId): array
 	{
-		// Получаем данные о раздаче из базы данных
 		$handStmt = $pdo->prepare("
 			SELECT hero_cards, board, is_completed 
 			FROM hands 
@@ -22,19 +21,19 @@ class HandEvaluator
 		$handData = $handStmt->fetch(\PDO::FETCH_ASSOC);
 
 		if (!$handData) {
-			return ['strength' => 'invalid', 'description' => 'Раздача не найдена'];
+			return ['strength' => 'invalid', 'description' => 'Distribution not found'];
 		}
 
 		$heroCardsString = $handData['hero_cards'] ?? '';
 		$boardString = $handData['board'] ?? '';
-		$isCompleted = (bool)$handData['is_completed'];
+		$isCompleted = (bool) $handData['is_completed'];
 
 		$parsedHeroCards = self::parseCards($heroCardsString);
 		$parsedBoardCards = self::parseCards($boardString);
 
 		// Проверяем валидность карт героя
 		if (count($parsedHeroCards) !== 2) {
-			return ['strength' => 'invalid', 'description' => 'Неверные карты героя'];
+			return ['strength' => 'invalid', 'description' => 'Invalid cards'];
 		}
 
 		if (empty($parsedBoardCards)) {
@@ -61,12 +60,20 @@ class HandEvaluator
 		if (empty($cardString)) return [];
 
 		$cards = [];
+		$uniqueCards = [];
 		$parts = preg_split('/\s+/', trim($cardString));
 
 		foreach ($parts as $card) {
 			if (preg_match('/^([2-9TJQKA])([cdhs])$/i', $card, $matches)) {
 				$rank = strtoupper($matches[1]);
 				$suit = strtolower($matches[2]);
+				$fullCard = $rank . $suit;
+
+				if (isset($uniqueCards[$fullCard])) {
+					return [];
+				}
+
+				$uniqueCards[$fullCard] = true;
 				$cards[] = [
 					'rank' => $rank,
 					'suit' => $suit,
@@ -76,7 +83,6 @@ class HandEvaluator
 			}
 		}
 
-		// Сортируем карты по значению (от старших к младшим)
 		usort($cards, function($a, $b) {
 			return $b['value'] - $a['value'];
 		});
