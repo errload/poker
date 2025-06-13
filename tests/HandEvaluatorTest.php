@@ -411,6 +411,110 @@ class HandEvaluatorTest extends TestCase
 	}
 
 	/**
+	 * Тестирует метод checkStraightFlush()
+	 * Проверяет определение стрит-флэша
+	 */
+	private function callCheckStraightFlush(array $allCards, array $suitCounts): ?array
+	{
+		$reflector = new \ReflectionClass(HandEvaluator::class);
+		$method = $reflector->getMethod('checkStraightFlush');
+		$method->setAccessible(true);
+		return $method->invokeArgs(null, [$allCards, $suitCounts]);
+	}
+
+	public function testCheckStraightFlush()
+	{
+		// Стрит-флэш червы (K-Q-J-10-9)
+		$straightFlushCards = [
+			['rank' => 'K', 'suit' => 'h', 'value' => 13, 'full' => 'Kh'],
+			['rank' => 'Q', 'suit' => 'h', 'value' => 12, 'full' => 'Qh'],
+			['rank' => 'J', 'suit' => 'h', 'value' => 11, 'full' => 'Jh'],
+			['rank' => 'T', 'suit' => 'h', 'value' => 10, 'full' => 'Th'],
+			['rank' => '9', 'suit' => 'h', 'value' => 9, 'full' => '9h'],
+			['rank' => '2', 'suit' => 'd', 'value' => 2, 'full' => '2d'],
+			['rank' => '3', 'suit' => 'c', 'value' => 3, 'full' => '3c']
+		];
+
+		$suits = array_column($straightFlushCards, 'suit');
+		$suitCounts = array_count_values($suits);
+		$result = $this->callCheckStraightFlush($straightFlushCards, $suitCounts);
+		$this->assertNotNull($result);
+		$this->assertEquals('straight_flush', $result['strength']);
+		$this->assertCount(5, $result['combination']);
+		$this->assertEquals('h', $result['combination'][0]['suit']);
+		$this->assertEquals('strong', $result['nut_status']);
+
+		// Стрит-флэш червы (T-9-8-7-6)
+		$straightFlushCards = [
+			['rank' => 'T', 'suit' => 'h', 'value' => 10, 'full' => 'Th'],
+			['rank' => '9', 'suit' => 'h', 'value' => 9, 'full' => '9h'],
+			['rank' => '8', 'suit' => 'h', 'value' => 8, 'full' => '8h'],
+			['rank' => '7', 'suit' => 'h', 'value' => 7, 'full' => '7h'],
+			['rank' => '6', 'suit' => 'h', 'value' => 6, 'full' => '6h']
+		];
+
+		$suits = array_column($straightFlushCards, 'suit');
+		$suitCounts = array_count_values($suits);
+		$result = $this->callCheckStraightFlush($straightFlushCards, $suitCounts);
+		$this->assertNotNull($result);
+		$this->assertEquals('straight_flush', $result['strength']);
+		$this->assertCount(5, $result['combination']);
+		$this->assertEquals('h', $result['combination'][0]['suit']);
+		$this->assertEquals('strong', $result['nut_status']);
+
+		// Стрит-флэш с младшим тузом (A-2-3-4-5)
+		$wheelFlushCards = [
+			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
+			['rank' => '2', 'suit' => 'h', 'value' => 2, 'full' => '2h'],
+			['rank' => '3', 'suit' => 'h', 'value' => 3, 'full' => '3h'],
+			['rank' => '4', 'suit' => 'h', 'value' => 4, 'full' => '4h'],
+			['rank' => '5', 'suit' => 'h', 'value' => 5, 'full' => '5h'],
+			['rank' => 'K', 'suit' => 'd', 'value' => 13, 'full' => 'Kd'],
+			['rank' => 'Q', 'suit' => 'c', 'value' => 12, 'full' => 'Qc']
+		];
+
+		$suits = array_column($wheelFlushCards, 'suit');
+		$suitCounts = array_count_values($suits);
+		$result = $this->callCheckStraightFlush($wheelFlushCards, $suitCounts);
+		$this->assertNotNull($result);
+		$this->assertEquals('straight_flush', $result['strength']);
+		// Проверяем, что комбинация содержит карту 5h (младшую в стрит-флэше)
+		$this->assertEquals('5h', $result['combination'][4]['full']);
+
+		// Роял-флэш (должен вернуть null, так как проверяется в другом методе)
+		$royalFlushCards = [
+			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
+			['rank' => 'K', 'suit' => 'h', 'value' => 13, 'full' => 'Kh'],
+			['rank' => 'Q', 'suit' => 'h', 'value' => 12, 'full' => 'Qh'],
+			['rank' => 'J', 'suit' => 'h', 'value' => 11, 'full' => 'Jh'],
+			['rank' => 'T', 'suit' => 'h', 'value' => 10, 'full' => 'Th'],
+			['rank' => '2', 'suit' => 'd', 'value' => 2, 'full' => '2d'],
+			['rank' => '3', 'suit' => 'c', 'value' => 3, 'full' => '3c']
+		];
+
+		$suits = array_column($royalFlushCards, 'suit');
+		$suitCounts = array_count_values($suits);
+		$result = $this->callCheckStraightFlush($royalFlushCards, $suitCounts);
+		$this->assertNull($result, 'Роял-флэш должен обрабатываться другим методом');
+
+		// Нет стрит-флэша (просто флеш)
+		$noStraightFlushCards = [
+			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
+			['rank' => 'K', 'suit' => 'h', 'value' => 13, 'full' => 'Kh'],
+			['rank' => 'Q', 'suit' => 'h', 'value' => 12, 'full' => 'Qh'],
+			['rank' => 'J', 'suit' => 'h', 'value' => 11, 'full' => 'Jh'],
+			['rank' => '9', 'suit' => 'h', 'value' => 9, 'full' => '9h'],
+			['rank' => '2', 'suit' => 'd', 'value' => 2, 'full' => '2d'],
+			['rank' => '3', 'suit' => 'c', 'value' => 3, 'full' => '3c']
+		];
+
+		$suits = array_column($noStraightFlushCards, 'suit');
+		$suitCounts = array_count_values($suits);
+		$result = $this->callCheckStraightFlush($noStraightFlushCards, $suitCounts);
+		$this->assertNull($result);
+	}
+
+	/**
 	 * Тестирует метод checkFlush()
 	 * Проверяет определение флеша
 	 */

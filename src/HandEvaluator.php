@@ -303,16 +303,20 @@ class HandEvaluator
 			return $royalFlushResult;
 		}
 
+		if ($straightFlushResult = self::checkStraightFlush($allCards, $suitCounts)) {
+			return $straightFlushResult;
+		}
+
+		if ($quadsResult = self::checkQuads($allCards, $rankCounts)) {
+			return $quadsResult;
+		}
+
 		if ($flushResult = self::checkFlush($allCards, $suits, $suitCounts, $holeCards, $boardCards)) {
 			return $flushResult;
 		}
 
 		if ($straightResult = self::checkStraight($allCards, $values)) {
 			return $straightResult;
-		}
-
-		if ($quadsResult = self::checkQuads($allCards, $rankCounts)) {
-			return $quadsResult;
 		}
 
 		if ($fullHouseResult = self::checkFullHouse($allCards, $rankCounts)) {
@@ -336,13 +340,8 @@ class HandEvaluator
 
 	/**
 	 * Проверяет, есть ли у игрока роял-флэш
-	 *
-	 * @param array $allCards Все карты (карты игрока + общие карты на столе).
-	 * @param array $suits Массив всех мастей в игре (например, ['hearts', 'diamonds', 'clubs', 'spades']).
-	 * @param array $suitCounts Количество карт каждой масти (например, ['hearts' => 5, 'spades' => 2]).
-	 * @param array $holeCards Карты игрока (2 карты в холдеме).
-	 * @param array $boardCards Общие карты на столе (5 карт в тexas hold'em).
-	 *
+	 * @param array $allCards Все карты (карты игрока + общие карты на столе)
+	 * @param array $suitCounts Количество карт каждой масти
 	 * @return array|null Возвращает информацию о роял-флэше или null
 	 */
 	private static function checkRoyalFlush(array $allCards, array $suitCounts): ?array {
@@ -389,6 +388,89 @@ class HandEvaluator
 						'combination' => $royalFlushCards,
 						'kickers' => [],
 						'nut_status' => 'nut'
+					];
+				}
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Проверяет, есть ли у игрока стрит-флэш
+	 * @param array $allCards Все карты (карты игрока + общие карты на столе)
+	 * @param array $suitCounts Количество карт каждой масти
+	 * @return array|null Возвращает информацию о стрит-флэше или null
+	 */
+	private static function checkStraightFlush(array $allCards, array $suitCounts): ?array {
+		foreach ($suitCounts as $suit => $count) {
+			if ($count >= 5) {
+				// Получаем карты нужной масти и сортируем по убыванию
+				$flushCards = array_values(array_filter($allCards, fn($card) => $card['suit'] === $suit));
+				usort($flushCards, fn($a, $b) => $b['value'] - $a['value']);
+
+				// Собираем значения карт
+				$values = array_column($flushCards, 'value');
+				$hasAce = in_array(14, $values);
+
+				// Проверяем специальный случай "колеса" (A-2-3-4-5)
+				if ($hasAce) {
+					$wheelCheck = [14, 2, 3, 4, 5];
+					$wheelFound = true;
+					foreach ($wheelCheck as $val) {
+						if (!in_array($val, $values)) {
+							$wheelFound = false;
+							break;
+						}
+					}
+
+					// Собираем карты для "колеса" в правильном порядке
+					if ($wheelFound) {
+						$wheelCards = [];
+						foreach ($wheelCheck as $val) {
+							foreach ($flushCards as $card) {
+								if ($card['value'] == $val) {
+									$wheelCards[] = $card;
+									break;
+								}
+							}
+						}
+
+						return [
+							'strength' => 'straight_flush',
+							'description' => 'Straight Flush ('.$suit.' A-2-3-4-5)',
+							'combination' => $wheelCards,
+							'kickers' => [],
+							'nut_status' => 'strong'
+						];
+					}
+				}
+
+				// Проверяем обычные стрит-флэши
+				$straightValues = [];
+				for ($i = 0; $i <= count($values) - 5; $i++) {
+					if ($values[$i] - $values[$i+4] === 4 && count(array_unique(array_slice($values, $i, 5))) === 5) {
+						$straightValues = array_slice($values, $i, 5);
+						break;
+					}
+				}
+
+				if (!empty($straightValues)) {
+					$combination = array_slice($flushCards, array_search($straightValues[0], $values), 5);
+
+					// Проверка на роял-флэш
+					if ($combination[0]['value'] == 14 && $combination[1]['value'] == 13 &&
+						$combination[2]['value'] == 12 && $combination[3]['value'] == 11 &&
+						$combination[4]['value'] == 10) {
+						return null;
+					}
+
+					return [
+						'strength' => 'straight_flush',
+						'description' => 'Straight Flush ('.$suit.' '.implode('-', $straightValues).')',
+						'combination' => $combination,
+						'kickers' => [],
+						'nut_status' => $combination[0]['value'] == 14 ? 'nut' : 'strong'
 					];
 				}
 			}
