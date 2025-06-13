@@ -109,7 +109,7 @@ class HandEvaluator
 	 * @param array $holeCards Массив с картами руки
 	 * @return array Массив с оценкой силы руки, содержащий ключи 'strength' и 'description'
 	 */
-	public static function evaluatePreflopHand(array $holeCards): array
+	private static function evaluatePreflopHand(array $holeCards): array
 	{
 		// Извлекаем базовые параметры карт
 		$rank1 = $holeCards[0]['rank'];
