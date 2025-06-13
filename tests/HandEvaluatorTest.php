@@ -25,7 +25,7 @@ class HandEvaluatorTest extends TestCase
 		$invalid = HandEvaluator::parseCards('Xy 11 ZZ');
 		$this->assertEmpty($invalid);
 
-		// проверка обработки дубликатов карт
+		// дубликаты карт
 		$duplicates = HandEvaluator::parseCards("Ah Ah Ks Qd Jc");
 		$this->assertEmpty($duplicates);
 	}
