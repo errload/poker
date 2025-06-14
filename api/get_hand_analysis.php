@@ -44,113 +44,6 @@ try {
 		]
 	);
 
-//{
-//	"tournament_stage": "late",
-//	"game_context": {
-//		"blinds": [1000, 2000],
-//		"pot": {
-//			"current": 42000,
-//			"hero_equity": 35
-//		}
-//	},
-//	"hero": {
-//		"position": "BTN",
-//		"cards": ["As", "Kd"],
-//		"stack": 32000,
-//		"starting_stack": 50000,
-//		"aggressor": true  // Герой был последним агрессором (рейзил префлоп)
-//	},
-//	"board": ["8h", "9s", "2d", "Qc", "3h"],
-//	"hand_analysis": {
-//		"hero_combination": {
-//			"type": "top_pair",
-//			"strength": "strong",
-//			"kicker": "ace"
-//		},
-//		"draws": [
-//			{
-//				"type": "flush_draw",
-//				"strength": "nut",
-//				"outs": 9
-//			},
-//			{
-//				"type": "straight_draw",
-//				"strength": "medium",
-//				"outs": 4
-//			}
-//		],
-//		"threats": [
-//			{
-//				"type": "flush",
-//				"strength": "strong",
-//				"description": "Opponent may have Qx flush"
-//			},
-//			{
-//				"type": "straight",
-//				"strength": "nut",
-//				"description": "QJ makes nut straight"
-//			}
-//		]
-//	},
-//	"action_flow": {
-//		"current_street": "river",
-//		"history": {
-//			"preflop": [
-//				{ "player": "Villian1", "position": "UTG", "action": "raise", "amount": 2.5 },
-//				{ "player": "Villian2", "position": "CO", "action": "call" },
-//				{ "player": "Hero", "position": "BTN", "action": "raise", "amount": 3 },
-//				{ "player": "SB", "action": "fold" },
-//				{ "player": "BB", "action": "fold" },
-//				{ "player": "Villian1", "action": "call" },
-//				{ "player": "Villian2", "action": "call" }
-//			],
-//			"flop": [
-//				{ "player": "Villian1", "action": "check" },
-//				{ "player": "Villian2", "action": "check" },
-//				{ "player": "Hero", "action": "bet", "size": "2/3_pot" },
-//				{ "player": "Villian1", "action": "fold" },
-//				{ "player": "Villian2", "action": "call" }
-//			],
-//			"turn": [
-//				{ "player": "Villian2", "action": "check" },
-//				{ "player": "Hero", "action": "bet", "size": "1/2_pot" },
-//				{ "player": "Villian2", "action": "call" }
-//			],
-//			"river": [
-//				{ "player": "Villian2", "action": "check" },
-//				{ "player": "Hero", "action": "decision_pending" }
-//			]
-//		}
-//	},
-//	"opponent_profiles": {
-//		"Villian1": {
-//			"stats": {
-//				"VPIP": 28,
-//				"PFR": 18,
-//				"aggression_factor": 2.5,
-//				"fold_to_cbet": 65
-//			},
-//			"tendencies": ["tight", "positional"]
-//		},
-//		"Villian2": {
-//			"stats": {
-//				"VPIP": 35,
-//				"PFR": 22,
-//				"aggression_factor": 1.8,
-//				"fold_to_cbet": 45,
-//				"WTSD": 30
-//			},
-//			"tendencies": ["calls_stations", "weak_river"]
-//		}
-//	},
-//	"decision_context": {
-//		"recommended_actions": ["bet", "check"],
-//		"illegal_actions": ["fold"],
-//		"pot_odds": 4.2,
-//		"stack_to_pot_ratio": 0.76
-//	}
-//}
-
 //1. Основная статистика (обязательная)
 //Эти данные помогают оценить стиль игры оппонента:
 //VPIP (Voluntarily Put $ In Pot) – % раз, когда игрок добровольно вкладывает деньги в банк (широта диапазона).
@@ -234,6 +127,117 @@ try {
 //"straight_threat" (4 в ряд на борде)
 //"paired_board" (пара на борде → риск сета)
 //"overcards" (карты выше вашей пары, например, A♥ на Q♦ Q♠)
+
+	$response = [
+		'tournament_stage' => $input['stady'],
+		'pot' => [
+			'current_bb' => 40, // ?
+			'hero_equity' => 35 // ?
+		],
+		'hero' => [
+			'position' => $input['hero_position'],
+			'cards' => ["As", "Kd"], // ?
+			'stack_bb' => 67, // ?
+			'starting_stack_bb' => 125 // ?
+		],
+		'board' => ['8h', '9s', '2d', 'Qc', '3h'], // ?
+		'hand_analysis' => [ // ?
+			'hero_combination' => [
+				'type' => 'top_pair',
+				'strength' => 'strong',
+				'kicker' => 'ace'
+			],
+			'draws' => [
+				[
+					'type' => 'flush_draw',
+					'strength' => 'nut',
+					'outs' => 9
+				],
+				[
+					'type' => 'straight_draw',
+					'strength' => 'medium',
+					'outs' => 4
+				]
+			],
+			'threats' => [
+				[
+					'type' => 'flush',
+					'strength' => 'strong',
+					'description' => 'Opponent may have Qx flush'
+				],
+				[
+					'type' => 'straight',
+					'strength' => "nut",
+					'description' => 'QJ makes nut straight'
+				]
+			]
+		],
+		'action_flow' => [ // ?
+			'current_street' => 'river',
+			'history' => [
+				'preflop' => [
+					[ 'player' => 'Villian1', 'position' => 'UTG', 'action' => 'raise', 'amount' => 2.5 ],
+					[ 'player' => 'Villian2', 'position' => 'CO', 'action' => 'call' ],
+					[ 'player' => 'Hero', 'position' => 'BTN', 'action' => 'raise', 'amount' => 3 ],
+					[ 'player' => 'SB', 'action' => 'fold' ],
+					[ 'player' => 'BB', 'action' => 'fold' ],
+					[ 'player' => 'Villian1', 'action' => 'call' ],
+					[ 'player' => 'Villian2', 'action' => 'call' ]
+				],
+				'flop' => [
+					[ 'player' => 'Villian1', 'action' => 'check' ],
+					[ 'player' => 'Villian2', 'action' => 'check' ],
+					[ 'player' => 'Hero', 'action' => 'bet', 'size' => '2/3_pot' ],
+					[ 'player' => 'Villian1', 'action' => 'fold' ],
+					[ 'player' => 'Villian2', 'action' => 'call' ]
+				],
+				'turn' => [
+					[ 'player' => 'Villian2', 'action' => 'check' ],
+					[ 'player' => 'Hero', 'action' => 'bet', 'size' => '1/2_pot' ],
+					[ 'player' => 'Villian2', 'action' => 'call' ]
+				],
+				'river' => [
+					[ 'player' => 'Villian2', 'action' => 'check' ],
+					[ 'player' => 'Hero', 'action' => '?' ]
+				]
+			],
+			'aggressor' => [
+				'street' => 'preflop',
+				'player' => 'Hero',
+				'action' => 'raise'
+			]
+		],
+		'opponent_profiles' => [ // ?
+			'Villian1' => [
+				'stats' => [
+					'VPIP' => 28,
+					'PFR' => 18,
+					'aggression_factor' => 2.5,
+					'fold_to_cbet' => 65
+				],
+				'previous_showdowns' => [
+					['Ac', '2d'],
+					['Kh', 'Jd'],
+					['Ts', '9s']
+				]
+			],
+			'Villian2' => [
+				'stats' => [
+					'VPIP' => 35,
+					'PFR' => 22,
+					'aggression_factor' => 1.8,
+					'fold_to_cbet' => 45,
+					'WTSD' => 30
+				]
+			]
+		],
+		'ecision_context' => [ // ?
+			'recommended_actions' => ['bet', 'check'],
+			'illegal_actions' => ['fold'],
+			'pot_odds' => 4.2,
+			'stack_to_pot_ratio' => 0.76 // SPR
+		]
+	];
 
 	$result = HandEvaluator::evaluateHand($pdo, $input['hand_id']);
 	print_r($result);
