@@ -869,37 +869,75 @@ class HandEvaluator
 		];
 	}
 
-	public static function checkTwoPair(array $allCards, array $rankCounts, array $holeCards, array $boardCards): ?array
+	/**
+	 * Проверяет наличие двух пар у героя и на борде
+	 *
+	 * @param array $heroCards Карты героя
+	 * @param array $boardCards Карты на борде
+	 * @return array Результат с информацией о силе, опасности и количестве карт героя в парах
+	 */
+	private static function checkTwoPair(array $heroCards, array $boardCards): array
 	{
-		if (count(array_filter($rankCounts, function($v) { return $v >= 2; })) < 2) {
-			return null;
+		// Объединяем все карты
+		$allCards = array_merge($heroCards, $boardCards);
+		$values = array_column($allCards, 'value');
+		$valueCounts = array_count_values($values);
+
+		// Находим все пары (значения, которые встречаются 2+ раза)
+		$pairs = [];
+		foreach ($valueCounts as $value => $count) {
+			if ($count >= 2) {
+				$pairs[] = $value;
+			}
 		}
 
-		$pairRanks = array_keys(array_filter($rankCounts, function($v) { return $v >= 2; }));
-		rsort($pairRanks);
-		$topPair = $pairRanks[0];
-		$secondPair = $pairRanks[1];
+		// Если меньше двух пар - возвращаем результат
+		if (count($pairs) < 2) {
+			$hasPair = !empty($pairs);
+			return [
+				'strength' => 'no_two_pairs',
+				'danger' => $hasPair ? 'medium' : 'low',
+				'hero_cards_count' => $hasPair ? min(2, count(array_keys(array_column($heroCards, 'value'), $pairs[0]))) : 0
+			];
+		}
 
-		$topPairCards = array_filter($allCards, function($card) use ($topPair) {
-			return $card['rank'] === $topPair;
-		});
-		$secondPairCards = array_filter($allCards, function($card) use ($secondPair) {
-			return $card['rank'] === $secondPair;
-		});
-		$kickers = array_filter($allCards, function($card) use ($topPair, $secondPair) {
-			return $card['rank'] !== $topPair && $card['rank'] !== $secondPair;
-		});
-		usort($kickers, function($a, $b) { return $b['value'] - $a['value']; });
+		// Сортируем пары по убыванию
+		rsort($pairs);
+		$topPair = $pairs[0];
+		$secondPair = $pairs[1];
 
-		$isStrong = ($topPair == 'A' || $topPair == 'K') && ($secondPair == 'Q' || $secondPair == 'J');
+		// Считаем участие героя в парах
+		$heroValues = array_column($heroCards, 'value');
+		$heroInTopPair = in_array($topPair, $heroValues) ? min(2, count(array_keys($heroValues, $topPair))) : 0;
+		$heroInSecondPair = in_array($secondPair, $heroValues) ? min(2, count(array_keys($heroValues, $secondPair))) : 0;
+		$heroCardsCount = $heroInTopPair + $heroInSecondPair;
+
+		// Проверяем полностью ли пары на борде
+		$boardValues = array_column($boardCards, 'value');
+		$boardTopPairCount = count(array_keys($boardValues, $topPair));
+		$boardSecondPairCount = count(array_keys($boardValues, $secondPair));
+
+		// Определяем уровень опасности
+		$danger = 'high'; // по умолчанию высокая опасность
+
+		if ($boardTopPairCount >= 2 && $boardSecondPairCount >= 2) {
+			// Обе пары полностью на борде
+			$danger = 'high';
+		} elseif ($heroCardsCount == 2) {
+			// Герой участвует в обеих парах
+			$danger = 'low';
+		} elseif ($heroInTopPair > 0 || $heroInSecondPair > 0) {
+			// Герой участвует хотя бы в одной паре
+			$danger = 'medium';
+		} elseif ($topPair <= 7 && $secondPair <= 7) {
+			// Обе пары низкие
+			$danger = 'low';
+		}
 
 		return [
-			'strength' => 'two_pair',
-			'description' => 'Two Pair ('.$topPair.' and '.$secondPair.')',
-			'combination' => array_merge(array_slice($topPairCards, 0, 2), array_slice($secondPairCards, 0, 2)),
-			'kickers' => array_slice($kickers, 0, 1),
-			'nut_status' => $isStrong ? 'strong' :
-				(max(array_column($boardCards, 'value')) > $topPair ? 'medium' : 'strong')
+			'strength' => 'two_pairs',
+			'danger' => $danger,
+			'hero_cards_count' => $heroCardsCount
 		];
 	}
 
