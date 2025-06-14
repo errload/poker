@@ -871,7 +871,6 @@ class HandEvaluator
 
 	/**
 	 * Проверяет наличие двух пар у героя и на борде
-	 *
 	 * @param array $heroCards Карты героя
 	 * @param array $boardCards Карты на борде
 	 * @return array Результат с информацией о силе, опасности и количестве карт героя в парах
@@ -883,21 +882,22 @@ class HandEvaluator
 		$values = array_column($allCards, 'value');
 		$valueCounts = array_count_values($values);
 
-		// Находим все пары (значения, которые встречаются 2+ раза)
+		// Находим все пары (значения, встречающиеся 2+ раза)
 		$pairs = [];
 		foreach ($valueCounts as $value => $count) {
 			if ($count >= 2) {
-				$pairs[] = $value;
+				$pairs[] = (int)$value;
 			}
 		}
 
-		// Если меньше двух пар - возвращаем результат
+		// Если меньше двух пар
 		if (count($pairs) < 2) {
 			$hasPair = !empty($pairs);
+			$heroCardsCount = $hasPair ? count(array_intersect(array_column($heroCards, 'value'), [$pairs[0]])) : 0;
 			return [
 				'strength' => 'no_two_pairs',
 				'danger' => $hasPair ? 'medium' : 'low',
-				'hero_cards_count' => $hasPair ? min(2, count(array_keys(array_column($heroCards, 'value'), $pairs[0]))) : 0
+				'hero_cards_count' => min($heroCardsCount, 2)
 			];
 		}
 
@@ -908,8 +908,8 @@ class HandEvaluator
 
 		// Считаем участие героя в парах
 		$heroValues = array_column($heroCards, 'value');
-		$heroInTopPair = in_array($topPair, $heroValues) ? min(2, count(array_keys($heroValues, $topPair))) : 0;
-		$heroInSecondPair = in_array($secondPair, $heroValues) ? min(2, count(array_keys($heroValues, $secondPair))) : 0;
+		$heroInTopPair = min(2, count(array_keys($heroValues, $topPair)));
+		$heroInSecondPair = min(2, count(array_keys($heroValues, $secondPair)));
 		$heroCardsCount = $heroInTopPair + $heroInSecondPair;
 
 		// Проверяем полностью ли пары на борде
@@ -918,19 +918,18 @@ class HandEvaluator
 		$boardSecondPairCount = count(array_keys($boardValues, $secondPair));
 
 		// Определяем уровень опасности
-		$danger = 'high'; // по умолчанию высокая опасность
+		$danger = 'high'; // по умолчанию
 
 		if ($boardTopPairCount >= 2 && $boardSecondPairCount >= 2) {
-			// Обе пары полностью на борде
 			$danger = 'high';
+		} elseif ($heroInTopPair == 2 && $heroInSecondPair == 0 && $boardSecondPairCount >= 2) {
+			$danger = 'medium';
+			$heroCardsCount = 1;
 		} elseif ($heroCardsCount == 2) {
-			// Герой участвует в обеих парах
 			$danger = 'low';
-		} elseif ($heroInTopPair > 0 || $heroInSecondPair > 0) {
-			// Герой участвует хотя бы в одной паре
+		} elseif ($heroCardsCount == 1) {
 			$danger = 'medium';
 		} elseif ($topPair <= 7 && $secondPair <= 7) {
-			// Обе пары низкие
 			$danger = 'low';
 		}
 
