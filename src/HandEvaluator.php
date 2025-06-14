@@ -804,26 +804,82 @@ class HandEvaluator
 		];
 	}
 
-	public static function checkTrips(array $allCards, array $rankCounts, array $holeCards, array $boardCards): ?array
+	/**
+	 * Проверяет наличие тройки (сета) и определяет уровень ее опасности
+	 *
+	 * Опасность определяется по следующим критериям:
+	 * - Общие тройки (все 3 карты на борде) - всегда высокая опасность (high)
+	 * - Тройки с двумя картами героя - высокая опасность (high)
+	 * - Тройки с одной картой героя - средняя опасность (medium)
+	 * - Низкие тройки (2-7) - средняя опасность (medium)
+	 * - При отсутствии тройки, но наличии пары - высокая опасность (high)
+	 *
+	 * @param array $heroCards Карты героя в формате [['rank' => 'A', 'value' => 14], ...]
+	 * @param array $boardCards Карты на борде в том же формате
+	 * @param array $allCards Все карты (heroCards + boardCards)
+	 * @return array Массив с результатами:
+	 *               - 'strength': 'trips'|'no_trips'
+	 *               - 'danger': 'none'|'low'|'medium'|'high'
+	 *               - 'hero_cards_count': количество карт героя в тройке (0-2)
+	 */
+	private static function checkTrips(array $heroCards, array $boardCards): ?array
 	{
-		if (max($rankCounts) < 3) return null;
+		// Объединяем все карты
+		$allCards = array_merge($heroCards, $boardCards);
+		$values = array_column($allCards, 'value');
+		$valueCounts = array_count_values($values);
 
-		$tripRank = array_search(3, $rankCounts);
-		$tripCards = array_filter($allCards, function($card) use ($tripRank) {
-			return $card['rank'] === $tripRank;
-		});
-		$kickers = array_filter($allCards, function($card) use ($tripRank) {
-			return $card['rank'] !== $tripRank;
-		});
-		usort($kickers, function($a, $b) { return $b['value'] - $a['value']; });
+		// Проверяем наличие тройки
+		$tripsValue = null;
+		foreach ($valueCounts as $value => $count) {
+			if ($count >= 3) {
+				$tripsValue = $value;
+				break;
+			}
+		}
+
+		if (!$tripsValue) {
+			// Проверяем наличие пары (для определения опасности)
+			$hasPair = max($valueCounts) >= 2;
+
+			return [
+				'strength' => 'no_trips',
+				'danger' => $hasPair ? 'high' : 'low',
+				'hero_cards_count' => 0
+			];
+		}
+
+		// Определяем участие карт героя в тройке
+		$heroValues = array_column($heroCards, 'value');
+		$heroInTrips = min(2, count(array_keys($heroValues, $tripsValue)));
+
+		// Определяем уровень опасности
+		$danger = 'high'; // По умолчанию высокая опасность для всех троек
+
+		// Если тройка состоит из двух карт героя и одной на борде
+		if ($heroInTrips === 2) {
+			$danger = 'high'; // Все равно уязвима для каре
+		}
+		// Если тройка с одной картой героя
+		elseif ($heroInTrips === 1) {
+			$danger = 'medium'; // Средняя опасность
+		}
+		// Низкие тройки (2-7)
+		elseif ($tripsValue <= 7) {
+			$danger = 'medium'; // Менее очевидны для оппонентов
+		}
+
+		// Если тройка полностью на борде - всегда высокая опасность
+		$boardValues = array_column($boardCards, 'value');
+		$tripsOnBoard = count(array_keys($boardValues, $tripsValue)) >= 3;
+		if ($tripsOnBoard) {
+			$danger = 'high';
+		}
 
 		return [
-			'strength' => 'three_of_a_kind',
-			'description' => 'Three of a Kind ('.$tripRank.')',
-			'combination' => $tripCards,
-			'kickers' => array_slice($kickers, 0, 2),
-			'nut_status' => ($tripRank == 'A') ? 'strong' :
-				(max(array_column($boardCards, 'value')) > $tripRank ? 'medium' : 'strong')
+			'strength' => 'trips',
+			'danger' => $danger,
+			'hero_cards_count' => $heroInTrips
 		];
 	}
 

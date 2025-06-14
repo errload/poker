@@ -640,7 +640,7 @@ class HandEvaluatorTest extends TestCase
 		$reflector = new \ReflectionClass(HandEvaluator::class);
 		$method = $reflector->getMethod('checkFlush');
 		$method->setAccessible(true);
-		return $method->invokeArgs(null, [$heroCards, $boardCards, $boardCards]);
+		return $method->invokeArgs(null, [$heroCards, $boardCards]);
 	}
 
 	public function testCheckFlush()
@@ -789,7 +789,7 @@ class HandEvaluatorTest extends TestCase
 		$reflector = new \ReflectionClass(HandEvaluator::class);
 		$method = $reflector->getMethod('checkStraight');
 		$method->setAccessible(true);
-		return $method->invokeArgs(null, [$heroCards, $boardCards, $boardCards]);
+		return $method->invokeArgs(null, [$heroCards, $boardCards]);
 	}
 
 	public function testCheckStraight()
@@ -922,34 +922,73 @@ class HandEvaluatorTest extends TestCase
 	 * Тестирует метод checkTrips()
 	 * Проверяет определение сета
 	 */
+	private function callCheckTrips(array $heroCards, array $boardCards): ?array
+	{
+		$reflector = new \ReflectionClass(HandEvaluator::class);
+		$method = $reflector->getMethod('checkTrips');
+		$method->setAccessible(true);
+		return $method->invokeArgs(null, [$heroCards, $boardCards]);
+	}
+
 	public function testCheckTrips()
 	{
-		$tripsCards = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
-			['rank' => 'A', 'suit' => 'd', 'value' => 14, 'full' => 'Ad'],
-			['rank' => 'A', 'suit' => 'c', 'value' => 14, 'full' => 'Ac'],
-			['rank' => 'K', 'suit' => 's', 'value' => 13, 'full' => 'Ks'],
-			['rank' => 'Q', 'suit' => 'h', 'value' => 12, 'full' => 'Qh']
+		// Тройка с двумя картами героя - абсолютная сила (но все равно уязвима для каре)
+		$heroCards = [['rank' => 'A', 'value' => 14], ['rank' => 'A', 'value' => 14]];
+		$boardCards = [
+			['rank' => 'A', 'value' => 14],
+			['rank' => 'K', 'value' => 13],
+			['rank' => 'Q', 'value' => 12]
 		];
-		$rankCounts = array_count_values(array_column($tripsCards, 'rank'));
-		$holeCards = array_slice($tripsCards, 0, 2);
-		$boardCards = array_slice($tripsCards, 2, 3);
-		$result = HandEvaluator::checkTrips($tripsCards, $rankCounts, $holeCards, $boardCards);
-		$this->assertNotNull($result);
-		$this->assertEquals('three_of_a_kind', $result['strength']);
-		$this->assertEquals('A', $result['combination'][0]['rank']);
+		$result = $this->callCheckTrips($heroCards, $boardCards);
+		$this->assertEquals('trips', $result['strength']);
+		$this->assertEquals('high', $result['danger'], "Даже тройка с двумя картами героя уязвима для каре");
 
-		// Нет сета
-		$noTripsCards = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
-			['rank' => 'A', 'suit' => 'd', 'value' => 14, 'full' => 'Ad'],
-			['rank' => 'K', 'suit' => 'c', 'value' => 13, 'full' => 'Kc'],
-			['rank' => 'K', 'suit' => 's', 'value' => 13, 'full' => 'Ks'],
-			['rank' => 'Q', 'suit' => 'h', 'value' => 12, 'full' => 'Qh']
+		// Общая тройка на борде - всегда высокая опасность (возможны каре/фулхаус у оппонентов)
+		$heroCards = [['rank' => 'K', 'value' => 13], ['rank' => 'Q', 'value' => 12]];
+		$boardCards = [
+			['rank' => 'A', 'value' => 14],
+			['rank' => 'A', 'value' => 14],
+			['rank' => 'A', 'value' => 14],
+			['rank' => 'J', 'value' => 11]
 		];
-		$rankCounts = array_count_values(array_column($noTripsCards, 'rank'));
-		$result = HandEvaluator::checkTrips($noTripsCards, $rankCounts, array_slice($noTripsCards, 0, 2), array_slice($noTripsCards, 2, 3));
-		$this->assertNull($result);
+		$result = $this->callCheckTrips($heroCards, $boardCards);
+		$this->assertEquals('trips', $result['strength']);
+		$this->assertEquals('high', $result['danger'], "Общая тройка всегда высокая опасность");
+
+		// Тройка с одной картой героя - средняя опасность
+		$heroCards = [['rank' => 'Q', 'value' => 12], ['rank' => '2', 'value' => 2]];
+		$boardCards = [
+			['rank' => 'Q', 'value' => 12],
+			['rank' => 'Q', 'value' => 12],
+			['rank' => 'J', 'value' => 11],
+			['rank' => 'T', 'value' => 10]
+		];
+		$result = $this->callCheckTrips($heroCards, $boardCards);
+		$this->assertEquals('trips', $result['strength']);
+		$this->assertEquals('medium', $result['danger'], "Тройка с одной картой героя - средняя опасность");
+		$this->assertEquals(1, $result['hero_cards_count']);
+
+		// Низкая тройка (555) - средняя опасность (неочевидная комбинация)
+		$heroCards = [['rank' => '5', 'value' => 5], ['rank' => '5', 'value' => 5]];
+		$boardCards = [
+			['rank' => '5', 'value' => 5],
+			['rank' => 'J', 'value' => 11],
+			['rank' => 'T', 'value' => 10]
+		];
+		$result = $this->callCheckTrips($heroCards, $boardCards);
+		$this->assertEquals('trips', $result['strength']);
+		$this->assertEquals('medium', $result['danger'], "Низкая тройка - средняя опасность");
+
+		// Нет тройки, но есть пара - высокая опасность (возможен сет у оппонентов)
+		$heroCards = [['rank' => 'A', 'value' => 14], ['rank' => 'K', 'value' => 13]];
+		$boardCards = [
+			['rank' => 'Q', 'value' => 12],
+			['rank' => 'Q', 'value' => 12],
+			['rank' => 'J', 'value' => 11]
+		];
+		$result = $this->callCheckTrips($heroCards, $boardCards);
+		$this->assertEquals('no_trips', $result['strength']);
+		$this->assertEquals('high', $result['danger'], "Нет тройки, но есть пара - высокая опасность");
 	}
 
 	/**
