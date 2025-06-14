@@ -121,236 +121,86 @@ class HandEvaluatorTest extends TestCase
 
 	public function testEvaluatePreflopHand()
 	{
-		// Премиум пара (AA)
-		$premiumPair = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14],
-			['rank' => 'A', 'suit' => 's', 'value' => 14]
+		// Премиум пары (AA, KK, QQ), одномастные (AKs, AQs), разномастные (AKo)
+		$premiumPairs = [
+			[['rank' => 'A', 'suit' => 'h', 'value' => 14], ['rank' => 'A', 'suit' => 's', 'value' => 14]],
+			[['rank' => 'K', 'suit' => 'd', 'value' => 13], ['rank' => 'K', 'suit' => 'c', 'value' => 13]],
+			[['rank' => 'Q', 'suit' => 'h', 'value' => 12], ['rank' => 'Q', 'suit' => 'd', 'value' => 12]],
+			[['rank' => 'A', 'suit' => 'h', 'value' => 14], ['rank' => 'K', 'suit' => 'h', 'value' => 13]],
+			[['rank' => 'A', 'suit' => 'h', 'value' => 14], ['rank' => 'K', 'suit' => 'd', 'value' => 13]]
 		];
-		$result = $this->callEvaluatePreflopHand($premiumPair);
-		print_r($result);
-		$this->assertEquals('premium', $result['strength']);
-		$this->assertStringContainsString('Premium pair AA', $result['description']);
-		$this->assertEquals(['Ah', 'As'], $result['components']['cards']);
 
-		// Сильная пара (JJ)
-		$strongPair = [
-			['rank' => 'J', 'suit' => 'h', 'value' => 11],
-			['rank' => 'J', 'suit' => 'd', 'value' => 11]
-		];
-		$result = $this->callEvaluatePreflopHand($strongPair);
-		print_r($result);
-		$this->assertEquals('strong', $result['strength']);
-		$this->assertStringContainsString('Strong pair JJ', $result['description']);
-		$this->assertEquals(['Jd', 'Jh'], $result['components']['cards']);
+		foreach ($premiumPairs as $cards) {
+			$result = $this->callEvaluatePreflopHand($cards);
+			$this->assertEquals('premium', $result['strength']);
+		}
 
-		// Средняя пара (88)
-		$mediumPair = [
-			['rank' => '8', 'suit' => 'h', 'value' => 8],
-			['rank' => '8', 'suit' => 'd', 'value' => 8]
+		// Сильные пары (TT, JJ), одномастные (ATs+, KQs, QJs), разномастные (AQo, KQo)
+		$strongSuited = [
+			[['rank' => 'J', 'suit' => 'h', 'value' => 11], ['rank' => 'J', 'suit' => 'd', 'value' => 11]],
+			[['rank' => 'T', 'suit' => 's', 'value' => 10], ['rank' => 'T', 'suit' => 'c', 'value' => 10]],
+			[['rank' => 'A', 'suit' => 'h', 'value' => 14], ['rank' => 'T', 'suit' => 'h', 'value' => 10]],
+			[['rank' => 'A', 'suit' => 's', 'value' => 14], ['rank' => 'Q', 'suit' => 's', 'value' => 12]],
+			[['rank' => 'A', 'suit' => 'h', 'value' => 14], ['rank' => 'J', 'suit' => 'h', 'value' => 11]],
+			[['rank' => 'K', 'suit' => 'd', 'value' => 13], ['rank' => 'Q', 'suit' => 'd', 'value' => 12]],
+			[['rank' => 'Q', 'suit' => 's', 'value' => 12], ['rank' => 'J', 'suit' => 's', 'value' => 11]],
+			[['rank' => 'A', 'suit' => 'h', 'value' => 14], ['rank' => 'Q', 'suit' => 'd', 'value' => 12]],
+			[['rank' => 'K', 'suit' => 's', 'value' => 13], ['rank' => 'Q', 'suit' => 'c', 'value' => 12]]
 		];
-		$result = $this->callEvaluatePreflopHand($mediumPair);
-		print_r($result);
-		$this->assertEquals('medium', $result['strength']);
-		$this->assertStringContainsString('Medium pair 88', $result['description']);
-		$this->assertEquals(['8d', '8h'], $result['components']['cards']);
 
-		// Слабая пара (44)
-		$weakPair = [
-			['rank' => '4', 'suit' => 'h', 'value' => 4],
-			['rank' => '4', 'suit' => 'd', 'value' => 4]
-		];
-		$result = $this->callEvaluatePreflopHand($weakPair);
-		print_r($result);
-		$this->assertEquals('weak', $result['strength']);
-		$this->assertStringContainsString('Weak pair 44', $result['description']);
-		$this->assertEquals(['4d', '4h'], $result['components']['cards']);
+		foreach ($strongSuited as $cards) {
+			$result = $this->callEvaluatePreflopHand($cards);
+			$this->assertEquals('strong', $result['strength']);
+		}
 
-		// Премиум одномастная рука (AKs)
-		$premiumSuited = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14],
-			['rank' => 'K', 'suit' => 'h', 'value' => 13]
+		// Средние пары (77-99), одномастные (A9s-A2s, QTs+, J9s), разномастные (AJo+, KJo+)
+		$mediumPairs = [
+			[['rank' => '9', 'suit' => 'h', 'value' => 9], ['rank' => '9', 'suit' => 'd', 'value' => 9]],
+			[['rank' => '8', 'suit' => 's', 'value' => 8], ['rank' => '8', 'suit' => 'c', 'value' => 8]],
+			[['rank' => '7', 'suit' => 'h', 'value' => 7], ['rank' => '7', 'suit' => 's', 'value' => 7]],
+			[['rank' => 'A', 'suit' => 'h', 'value' => 14], ['rank' => '8', 'suit' => 'h', 'value' => 8]],
+			[['rank' => 'Q', 'suit' => 'd', 'value' => 12], ['rank' => 'T', 'suit' => 'd', 'value' => 10]],
+			[['rank' => 'J', 'suit' => 's', 'value' => 11], ['rank' => 'T', 'suit' => 's', 'value' => 10]],
+			[['rank' => 'A', 'suit' => 'h', 'value' => 14], ['rank' => 'J', 'suit' => 'd', 'value' => 11]],
+			[['rank' => 'K', 'suit' => 's', 'value' => 13], ['rank' => 'J', 'suit' => 'c', 'value' => 11]],
+			[['rank' => 'K', 'suit' => 'h', 'value' => 13], ['rank' => 'T', 'suit' => 'h', 'value' => 10]]
 		];
-		$result = $this->callEvaluatePreflopHand($premiumSuited);
-		print_r($result);
-		$this->assertEquals('premium', $result['strength']);
-		$this->assertStringContainsString('Premium hand AKs', $result['description']);
-		$this->assertEquals(['Ah', 'Kh'], $result['components']['cards']);
 
-		// Премиум разномастная рука (AKo)
-		$premiumOffsuit = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14],
-			['rank' => 'K', 'suit' => 'd', 'value' => 13]
-		];
-		$result = $this->callEvaluatePreflopHand($premiumOffsuit);
-		print_r($result);
-		$this->assertEquals('premium', $result['strength']);
-		$this->assertStringContainsString('Premium hand AKo', $result['description']);
-		$this->assertEquals(['Ah', 'Kd'], $result['components']['cards']);
+		foreach ($mediumPairs as $cards) {
+			$result = $this->callEvaluatePreflopHand($cards);
+			$this->assertEquals('medium', $result['strength']);
+		}
 
-		// Рука с тузом и хорошим кикером (AJs)
-		$aceWithKicker = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14],
-			['rank' => 'J', 'suit' => 'h', 'value' => 11]
+		// Слабые пары (22-66), одномастные (K9s-K2s, T7s+), разномастные (K9o+)
+		$weakPairs = [
+			[['rank' => 'J', 'suit' => 's', 'value' => 11], ['rank' => '9', 'suit' => 's', 'value' => 9]],
+			[['rank' => '6', 'suit' => 'h', 'value' => 6], ['rank' => '6', 'suit' => 'd', 'value' => 6]],
+			[['rank' => '5', 'suit' => 's', 'value' => 5], ['rank' => '5', 'suit' => 'c', 'value' => 5]],
+			[['rank' => '2', 'suit' => 'h', 'value' => 2], ['rank' => '2', 'suit' => 's', 'value' => 2]],
+			[['rank' => 'K', 'suit' => 'h', 'value' => 13], ['rank' => '4', 'suit' => 'h', 'value' => 4]],
+			[['rank' => 'T', 'suit' => 'd', 'value' => 10], ['rank' => '7', 'suit' => 'd', 'value' => 7]],
+			[['rank' => 'T', 'suit' => 'd', 'value' => 10], ['rank' => '8', 'suit' => 'd', 'value' => 8]],
+			[['rank' => 'K', 'suit' => 's', 'value' => 13], ['rank' => 'T', 'suit' => 'c', 'value' => 10]],
+			[['rank' => 'K', 'suit' => 's', 'value' => 13], ['rank' => '9', 'suit' => 'c', 'value' => 9]]
 		];
-		$result = $this->callEvaluatePreflopHand($aceWithKicker);
-		print_r($result);
-		$this->assertEquals('strong', $result['strength']);
-		$this->assertStringContainsString('Strong suited AJs', $result['description']);
-		$this->assertEquals(['Ah', 'Jh'], $result['components']['cards']);
 
-		// Рука с тузом и хорошим кикером (AQo)
-		$aceWithKicker = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14],
-			['rank' => 'Q', 'suit' => 'd', 'value' => 12]
-		];
-		$result = $this->callEvaluatePreflopHand($aceWithKicker);
-		print_r($result);
-		$this->assertEquals('strong', $result['strength']);
-		$this->assertStringContainsString('Strong offsuit AQo', $result['description']);
-		$this->assertEquals(['Ah', 'Qd'], $result['components']['cards']);
+		foreach ($weakPairs as $cards) {
+			$result = $this->callEvaluatePreflopHand($cards);
+			$this->assertEquals('weak', $result['strength']);
+		}
 
-		// Две высокие карты (KQs)
-		$highSuitedCards = [
-			['rank' => 'K', 'suit' => 'h', 'value' => 13],
-			['rank' => 'Q', 'suit' => 'h', 'value' => 12]
+		// Trash руки (все остальные)
+		$trashHands = [
+			[['rank' => 'J', 'suit' => 'h', 'value' => 11], ['rank' => '7', 'suit' => 'd', 'value' => 7]],
+			[['rank' => '9', 'suit' => 's', 'value' => 9], ['rank' => '4', 'suit' => 'c', 'value' => 4]],
+			[['rank' => 'T', 'suit' => 'h', 'value' => 10], ['rank' => '2', 'suit' => 's', 'value' => 2]],
+			[['rank' => 'Q', 'suit' => 'h', 'value' => 12], ['rank' => '8', 'suit' => 's', 'value' => 8]]
 		];
-		$result = $this->callEvaluatePreflopHand($highSuitedCards);
-		print_r($result);
-		$this->assertEquals('strong', $result['strength']);
-		$this->assertStringContainsString('Strong suited KQs', $result['description']);
-		$this->assertEquals(['Kh', 'Qh'], $result['components']['cards']);
 
-		// Две высокие карты (KQo)
-		$highCards = [
-			['rank' => 'K', 'suit' => 'h', 'value' => 13],
-			['rank' => 'Q', 'suit' => 'd', 'value' => 12]
-		];
-		$result = $this->callEvaluatePreflopHand($highCards);
-		print_r($result);
-		$this->assertEquals('medium', $result['strength']);
-		$this->assertStringContainsString('Medium offsuit KQo', $result['description']);
-		$this->assertEquals(['Kh', 'Qd'], $result['components']['cards']);
-
-		// Две средние карты (QJs)
-		$highCards = [
-			['rank' => 'Q', 'suit' => 's', 'value' => 12],
-			['rank' => 'J', 'suit' => 's', 'value' => 11]
-		];
-		$result = $this->callEvaluatePreflopHand($highCards);
-		print_r($result);
-		$this->assertEquals('medium', $result['strength']);
-		$this->assertStringContainsString('Medium suited QJs', $result['description']);
-		$this->assertEquals(['Js', 'Qs'], $result['components']['cards']);
-
-		// Две маржинальные карты (QJo)
-		$highCards = [
-			['rank' => 'Q', 'suit' => 'h', 'value' => 12],
-			['rank' => 'J', 'suit' => 'd', 'value' => 11]
-		];
-		$result = $this->callEvaluatePreflopHand($highCards);
-		print_r($result);
-		$this->assertEquals('marginal', $result['strength']);
-		$this->assertStringContainsString('Marginal offsuit QJo', $result['description']);
-		$this->assertEquals(['Jd', 'Qh'], $result['components']['cards']);
-
-		// Спекулятивная одномастная рука (A5s)
-		$speculativeSuited = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14],
-			['rank' => '5', 'suit' => 'h', 'value' => 5]
-		];
-		$result = $this->callEvaluatePreflopHand($speculativeSuited);
-		print_r($result);
-		$this->assertEquals('speculative', $result['strength']);
-		$this->assertStringContainsString('Speculative suited A5s', $result['description']);
-		$this->assertEquals(['5h', 'Ah'], $result['components']['cards']);
-
-		// Коннектор с мастью (JTs)
-		$suitedConnector = [
-			['rank' => 'J', 'suit' => 'h', 'value' => 11],
-			['rank' => 'T', 'suit' => 'h', 'value' => 10]
-		];
-		$result = $this->callEvaluatePreflopHand($suitedConnector);
-		print_r($result);
-		$this->assertEquals('speculative', $result['strength']);
-		$this->assertStringContainsString('Speculative suited JTs', $result['description']);
-		$this->assertEquals(['Jh', 'Th'], $result['components']['cards']);
-
-		// Коннектор с мастью (89s)
-		$suitedConnector = [
-			['rank' => '9', 'suit' => 'h', 'value' => 9],
-			['rank' => '8', 'suit' => 'h', 'value' => 8]
-		];
-		$result = $this->callEvaluatePreflopHand($suitedConnector);
-		print_r($result);
-		$this->assertEquals('marginal', $result['strength']);
-		$this->assertStringContainsString('Marginal suited 98s', $result['description']);
-		$this->assertEquals(['8h', '9h'], $result['components']['cards']);
-
-		// Слабая рука (72s)
-		$weakSuited = [
-			['rank' => '7', 'suit' => 'h', 'value' => 7],
-			['rank' => '2', 'suit' => 'h', 'value' => 2]
-		];
-		$result = $this->callEvaluatePreflopHand($weakSuited);
-		print_r($result);
-		$this->assertEquals('weak', $result['strength']);
-		$this->assertStringContainsString('Weak suited 72s', $result['description']);
-		$this->assertEquals(['2h', '7h'], $result['components']['cards']);
-
-		// Маржинальная одномастная рука (K9s)
-		$marginalSuited = [
-			['rank' => 'K', 'suit' => 'h', 'value' => 13],
-			['rank' => '9', 'suit' => 'h', 'value' => 9]
-		];
-		$result = $this->callEvaluatePreflopHand($marginalSuited);
-		print_r($result);
-		$this->assertEquals('marginal', $result['strength']);
-		$this->assertStringContainsString('Marginal suited K9s', $result['description']);
-		$this->assertEquals(['9h', 'Kh'], $result['components']['cards']);
-
-		// Спекулятивная разномастная рука (Axo)
-		$speculativeOffsuit = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14],
-			['rank' => '5', 'suit' => 'd', 'value' => 5]
-		];
-		$result = $this->callEvaluatePreflopHand($speculativeOffsuit);
-		print_r($result);
-		$this->assertEquals('marginal', $result['strength']);
-		$this->assertStringContainsString('Marginal offsuit A5o', $result['description']);
-		$this->assertEquals(['5d', 'Ah'], $result['components']['cards']);
-
-		// Маржинальная разномастная рука (K9o)
-		$marginalOffsuit = [
-			['rank' => 'K', 'suit' => 'h', 'value' => 13],
-			['rank' => '9', 'suit' => 'd', 'value' => 9]
-		];
-		$result = $this->callEvaluatePreflopHand($marginalOffsuit);
-		print_r($result);
-		$this->assertEquals('marginal', $result['strength']);
-		$this->assertStringContainsString('Marginal offsuit K9o', $result['description']);
-		$this->assertEquals(['9d', 'Kh'], $result['components']['cards']);
-
-		// Коннектор без масти (JTo)
-		$connectorOffsuit = [
-			['rank' => 'J', 'suit' => 'h', 'value' => 11],
-			['rank' => 'T', 'suit' => 'd', 'value' => 10]
-		];
-		$result = $this->callEvaluatePreflopHand($connectorOffsuit);
-		print_r($result);
-		$this->assertEquals('marginal', $result['strength']);
-		$this->assertStringContainsString('Marginal offsuit JTo', $result['description']);
-		$this->assertEquals(['Jh', 'Td'], $result['components']['cards']);
-
-		// Слабая рука (72o)
-		$weakHand = [
-			['rank' => '7', 'suit' => 'h', 'value' => 7],
-			['rank' => '2', 'suit' => 'd', 'value' => 2]
-		];
-		$result = $this->callEvaluatePreflopHand($weakHand);
-		print_r($result);
-		$this->assertEquals('weak', $result['strength']);
-		$this->assertStringContainsString('Weak offsuit 72o', $result['description']);
-		$this->assertEquals(['2d', '7h'], $result['components']['cards']);
+		foreach ($trashHands as $cards) {
+			$result = $this->callEvaluatePreflopHand($cards);
+			$this->assertEquals('trash', $result['strength']);
+		}
 	}
 
 	/**

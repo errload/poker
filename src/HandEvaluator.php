@@ -149,77 +149,61 @@ class HandEvaluator
 		$isSuited = ($suit1 === $suit2);
 		$suitedSuffix = $isSuited ? 's' : 'o';
 		$handName = $rank1 . $rank2;
-		$gap = $value1 - $value2;
-		$isConnector = ($gap <= 1);
-		$isOneGapper = ($gap === 2);
-		$isBroadway = ($value1 >= 10 && $value2 >= 10);
-		$isPremiumBroadway = ($value1 === 14 || ($value1 === 13 && $value2 === 12));
 
-		// 1. Проверка пар
+		// Проверка пар
 		if ($isPair) {
-			if ($value1 >= 14) return ['strength' => 'premium', 'components' => ['cards' => $cards], 'description' => "Premium pair {$handName}"];
-			if ($value1 >= 11) return ['strength' => 'strong', 'components' => ['cards' => $cards], 'description' => "Strong pair {$handName}"];
+			if ($value1 >= 12) return ['strength' => 'premium', 'components' => ['cards' => $cards], 'description' => "Premium pair {$handName}"];
+			if ($value1 >= 10) return ['strength' => 'strong', 'components' => ['cards' => $cards], 'description' => "Strong pair {$handName}"];
 			if ($value1 >= 7) return ['strength' => 'medium', 'components' => ['cards' => $cards], 'description' => "Medium pair {$handName}"];
 			return ['strength' => 'weak', 'components' => ['cards' => $cards], 'description' => "Weak pair {$handName}"];
 		}
 
-		// 2. Премиум руки (AK)
-		if ($value1 === 14 && $value2 === 13) {
-			return ['strength' => 'premium', 'components' => ['cards' => $cards], 'description' => "Premium hand {$handName}{$suitedSuffix}"];
+		// Премиум руки (AA, KK, QQ, AKs, AQs, AKo)
+		if ($value1 === 14) {
+			if ($value2 === 13) return ['strength' => 'premium', 'components' => ['cards' => $cards], 'description' => "Premium hand {$handName}{$suitedSuffix}"];
+			if ($value2 === 13) return ['strength' => 'premium', 'components' => ['cards' => $cards], 'description' => "Premium hand {$handName}o"];
 		}
 
-		// 3. Сильные руки (AQ+, AJs, KQs)
-		if ($value1 === 14 && $value2 >= 12) { // AQ+
-			return ['strength' => 'strong', 'components' => ['cards' => $cards], 'description' => "Strong " . ($isSuited ? 'suited' : 'offsuit') . " {$handName}{$suitedSuffix}"];
-		}
-		if ($value1 === 14 && $value2 === 11 && $isSuited) { // AJs
-			return ['strength' => 'strong', 'components' => ['cards' => $cards], 'description' => "Strong suited {$handName}s"];
-		}
-		if ($value1 === 13 && $value2 === 12 && $isSuited) { // KQs
-			return ['strength' => 'strong', 'components' => ['cards' => $cards], 'description' => "Strong suited {$handName}s"];
-		}
+		// Сильные руки (TT, JJ, ATs+, KQs, QJs, AQo, KQo)
+		if ($value1 === 10 && $value2 === 10) return ['strength' => 'strong', 'components' => ['cards' => $cards], 'description' => "Strong pair {$handName}"];
+		if ($value1 === 11 && $value2 === 11) return ['strength' => 'strong', 'components' => ['cards' => $cards], 'description' => "Strong pair {$handName}"];
 
-		// 4. Средние руки (QJs, KQo, QTs)
-		if ($isBroadway) {
-			// Бродвейные одномастные коннекторы (QJs)
-			if ($isSuited && $isConnector && $value1 === 12 && $value2 === 11) {
-				return ['strength' => 'medium', 'components' => ['cards' => $cards], 'description' => "Medium suited {$handName}s"];
-			}
-			// KQo
-			if (!$isSuited && $value1 === 13 && $value2 === 12) {
-				return ['strength' => 'medium', 'components' => ['cards' => $cards], 'description' => "Medium offsuit {$handName}o"];
-			}
-			// QTs
-			if ($isSuited && $value1 === 12 && $value2 === 10) {
-				return ['strength' => 'medium', 'components' => ['cards' => $cards], 'description' => "Medium suited {$handName}s"];
-			}
-		}
-
-		// 5. Спекулятивные руки (Axs, JTs, T9s)
 		if ($isSuited) {
-			// Axs (A2s-A9s)
-			if ($value1 === 14 && $value2 < 10) {
-				return ['strength' => 'speculative', 'components' => ['cards' => $cards], 'description' => "Speculative suited {$handName}s"];
-			}
-			// JTs, T9s
-			if (($value1 === 11 && $value2 === 10) || ($value1 === 10 && $value2 === 9)) {
-				return ['strength' => 'speculative', 'components' => ['cards' => $cards], 'description' => "Speculative suited {$handName}s"];
-			}
+			if ($value1 === 14 && $value2 >= 10) return ['strength' => 'strong', 'components' => ['cards' => $cards], 'description' => "Strong suited {$handName}s"];
+			if ($value1 === 13 && $value2 === 12) return ['strength' => 'strong', 'components' => ['cards' => $cards], 'description' => "Strong suited {$handName}s"];
+			if ($value1 === 12 && $value2 === 11) return ['strength' => 'strong', 'components' => ['cards' => $cards], 'description' => "Strong suited {$handName}s"];
+		} else {
+			if ($value1 === 14 && $value2 === 12) return ['strength' => 'strong', 'components' => ['cards' => $cards], 'description' => "Strong offsuit {$handName}o"];
+			if ($value1 === 13 && $value2 === 12) return ['strength' => 'strong', 'components' => ['cards' => $cards], 'description' => "Strong offsuit {$handName}o"];
 		}
 
-		// 6. Маргинальные руки (K9+, Q9+, J9+, T8+, 98+, Axo)
-		if (($value1 >= 13 && $value2 >= 7) || // K9+
-			($value1 >= 12 && $value2 >= 8) || // Q9+
-			($value1 >= 10 && $value2 >= 8) || // T8+
-			($value1 === 9 && $value2 === 8) || // 98s/98o
-			($value1 === 14 && $value2 < 10 && !$isSuited)) { // Axo
-			$type = $isSuited ? 'suited' : 'offsuit';
-			return ['strength' => 'marginal', 'components' => ['cards' => $cards], 'description' => "Marginal {$type} {$handName}{$suitedSuffix}"];
+		// Средние руки (99-77, A9s-A2s, JTs+, AJo+, KJo+)
+		if ($value1 === 9 && $value2 === 9) return ['strength' => 'medium', 'components' => ['cards' => $cards], 'description' => "Medium pair {$handName}"];
+		if ($value1 === 8 && $value2 === 8) return ['strength' => 'medium', 'components' => ['cards' => $cards], 'description' => "Medium pair {$handName}"];
+		if ($value1 === 7 && $value2 === 7) return ['strength' => 'medium', 'components' => ['cards' => $cards], 'description' => "Medium pair {$handName}"];
+
+		if ($isSuited) {
+			if ($value1 === 14 && $value2 >= 2 && $value2 <= 9) return ['strength' => 'medium', 'components' => ['cards' => $cards], 'description' => "Medium suited {$handName}s"];
+			if ($value1 >= 11 && $value2 >= 10) return ['strength' => 'medium', 'components' => ['cards' => $cards], 'description' => "Medium suited {$handName}s"];
+		} else {
+			if ($value1 === 14 && $value2 >= 11) return ['strength' => 'medium', 'components' => ['cards' => $cards], 'description' => "Medium offsuit {$handName}o"];
+			if ($value1 === 13 && $value2 >= 11) return ['strength' => 'medium', 'components' => ['cards' => $cards], 'description' => "Medium offsuit {$handName}o"];
 		}
 
-		// 7. Все остальные руки - слабые
+		// Слабые руки (66-22, K9s-K2s, T7s+, 98s, K9o+)
+		if ($value1 >= 2 && $value1 <= 6 && $value1 === $value2) return ['strength' => 'weak', 'components' => ['cards' => $cards], 'description' => "Weak pair {$handName}"];
+
+		if ($isSuited) {
+			if ($value1 === 13 && $value2 >= 2 && $value2 <= 9) return ['strength' => 'weak', 'components' => ['cards' => $cards], 'description' => "Weak suited {$handName}s"];
+			if ($value1 >= 10 && $value2 >= 7) return ['strength' => 'weak', 'components' => ['cards' => $cards], 'description' => "Weak suited {$handName}s"];
+			if ($value1 >= 9 && $value2 >= 8) return ['strength' => 'weak', 'components' => ['cards' => $cards], 'description' => "Weak suited {$handName}s"];
+		} else {
+			if ($value1 === 13 && $value2 >= 9) return ['strength' => 'weak', 'components' => ['cards' => $cards], 'description' => "Weak offsuit {$handName}o"];
+		}
+
+		// Все остальные руки - trash
 		$type = $isSuited ? 'suited' : 'offsuit';
-		return ['strength' => 'weak', 'components' => ['cards' => $cards], 'description' => "Weak {$type} {$handName}{$suitedSuffix}"];
+		return ['strength' => 'trash', 'components' => ['cards' => $cards], 'description' => "Trash {$type} {$handName}{$suitedSuffix}"];
 	}
 
 	public static function evaluateCombination(array $allCards, array $holeCards, array $boardCards): array
