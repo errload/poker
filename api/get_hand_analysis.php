@@ -44,6 +44,123 @@ try {
 		]
 	);
 
+//{
+//	"tournament_stage": "late", // "early", "middle", "late", "final"
+//	"hero": {
+//		"position": "BTN",
+//		"cards": ["As", "Kd"],
+//		"stack": 32000,
+//		"starting_stack": 50000
+//	},
+//	"board": ["8h", "9s", "2d", "Qc", "3h"],
+//	"hand_strength": {
+//		"hero_combination": {
+//			"type": "top_pair",
+//			"strength": "strong" // Топ-пара с тузом
+//		},
+//		"possible_improvements": [
+//			{ "type": "flush_draw", "strength": "nut" }, // Флеш-дро с тузом
+//			{ "type": "straight_draw", "strength": "medium" } // Двустороннее стрит-дро (например, 7T на борде 89J)
+//		],
+//		"threats": [
+//			{ "type": "flush", "strength": "strong" }, // Флеш оппонента (например, с Qx)
+//			{ "type": "straight", "strength": "nut" }, // Стрит с QJ (натс на этом борде)
+//			{ "type": "set", "strength": "medium" } // Сет (опасен, но не натс)
+//		]
+//	},
+//	"actions": {
+//		"preflop": [
+//			{ "player_id": "Villian1", "position": "UTG", "action": "raise_2.5x" },
+//			{ "player_id": "Villian2", "position": "CO", "action": "call" },
+//			{ "player_id": "Hero", "position": "BTN", "action": "raise_3x" },
+//			{ "player_id": "Villian3", "position": "SB", "action": "fold" },
+//			{ "player_id": "Villian4", "position": "BB", "action": "fold" },
+//			{ "player_id": "Villian1", "position": "UTG", "action": "call" },
+//			{ "player_id": "Villian2", "position": "CO", "action": "call" }
+//		],
+//		"flop": [
+//			{ "player_id": "Villian1", "position": "UTG", "action": "check" },
+//			{ "player_id": "Villian2", "position": "CO", "action": "check" },
+//			{ "player_id": "Hero", "position": "BTN", "action": "bet_2/3_pot" },
+//			{ "player_id": "Villian1", "position": "UTG", "action": "fold" },
+//			{ "player_id": "Villian2", "position": "CO", "action": "call" }
+//		],
+//		"turn": [
+//			{ "player_id": "Villian2", "position": "CO", "action": "check" },
+//			{ "player_id": "Hero", "position": "BTN", "action": "bet_1/2_pot" },
+//			{ "player_id": "Villian2", "position": "CO", "action": "call" }
+//		],
+//		"river": [
+//			{ "player_id": "Villian2", "position": "CO", "action": "check" },
+//			{ "player_id": "Hero", "position": "BTN", "action": "?" }
+//		]
+//	},
+//	"player_stats": {
+//		"Villian1": {
+//			"VPIP": 28,
+//			"PFR": 18,
+//			"AF": 2.5,
+//			"fold_to_cbet": 65
+//		},
+//		"Villian2": {
+//			"VPIP": 35,
+//			"PFR": 22,
+//			"AF": 1.8,
+//			"fold_to_cbet": 45,
+//			"WTSD": 30
+//		}
+//	},
+//	"pot": {
+//		"current": 42000,
+//		"hero_equity": 35
+//	}
+//}
+
+//1. Основная статистика (обязательная)
+//Эти данные помогают оценить стиль игры оппонента:
+//VPIP (Voluntarily Put $ In Pot) – % раз, когда игрок добровольно вкладывает деньги в банк (широта диапазона).
+//PFR (Preflop Raise) – % раз, когда игрок делает рейз префлоп.
+//AF (Aggression Factor) – соотношение агрессивных действий (рейз/бет) к пассивным (колл/чек).
+//Fold to CBet – % фолдов на ставку оппонента на флопе.
+//WTSD (Went to Showdown) – % раз, когда игрок доходит до вскрытия.
+//WSD (Won at Showdown) – % побед на вскрытии.
+//
+//2. Дополнительная статистика (для глубокого анализа)
+//Позволяет детализировать стратегию:
+//3Bet% – частота 3-бета префлоп.
+//Fold to 3Bet – % фолдов на 3-бет.
+//Steal% – частота попыток украсть блайнды (с BTN/SB/CO).
+//Squeeze% – частота сквизов (рейз после колла и рейза).
+//Check-Raise% – частота чек-рейзов.
+//Turn CBet% – продолжение ставки на терне.
+//River Aggression – агрессия на ривере.
+//
+//3. Позиционная статистика
+//Игроки могут менять стиль в зависимости от позиции:
+//VPIP/PFR по позициям (UTG, CO, BTN, SB/BB).
+//Fold to Steal – % фолдов при защите блайндов.
+//
+//4. Динамические данные (для адаптации)
+//Stack-to-Pot Ratio (SPR) – соотношение стека к банку.
+//Tendencies – склонности (например, игрок часто блефует на ривере).
+//История действий в текущей сессии (например, игрок делает 3-бет 4 раза подряд).
+//
+//"player_stats": {
+//	"Villian1": {
+//		"VPIP": 22,
+//		"PFR": 15,
+//		"AF": 1.8,
+//		"Fold_to_CBet": 65,
+//		"3Bet": 5,
+//		"Steal": 25,
+//		"WTSD": 28,
+//		"positional_stats": {
+//			"BTN": { "VPIP": 30, "PFR": 20 },
+//			"BB": { "VPIP": 18, "PFR": 12 }
+//		}
+//	}
+//}
+
 	$result = HandEvaluator::evaluateHand($pdo, $input['hand_id']);
 	print_r($result);
 
