@@ -1121,34 +1121,117 @@ class HandEvaluatorTest extends TestCase
 		return $method->invokeArgs(null, [$heroCards, $boardCards]);
 	}
 
-	public function testCheckPair()
+	public function testcheckTwoPair()
 	{
-		$pairCards = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
-			['rank' => 'A', 'suit' => 'd', 'value' => 14, 'full' => 'Ad'],
-			['rank' => 'K', 'suit' => 'c', 'value' => 13, 'full' => 'Kc'],
-			['rank' => 'Q', 'suit' => 's', 'value' => 12, 'full' => 'Qs'],
-			['rank' => 'J', 'suit' => 'h', 'value' => 11, 'full' => 'Jh']
+		// 1. Топ-пара у героя (AA) - низкая опасность
+		$heroCards = [['rank' => 'A', 'value' => 14], ['rank' => 'K', 'value' => 13]];
+		$boardCards = [
+			['rank' => 'A', 'value' => 14],
+			['rank' => 'Q', 'value' => 12],
+			['rank' => 'J', 'value' => 11]
 		];
-		$rankCounts = array_count_values(array_column($pairCards, 'rank'));
-		$holeCards = array_slice($pairCards, 0, 2);
-		$boardCards = array_slice($pairCards, 2, 3);
-		$result = HandEvaluator::checkPair($pairCards, $rankCounts, $holeCards, $boardCards);
-		$this->assertNotNull($result);
-		$this->assertEquals('pair', $result['strength']);
-		$this->assertEquals('A', $result['combination'][0]['rank']);
+		$result = $this->callCheckOnePair($heroCards, $boardCards);
+		$this->assertEquals('top_pair', $result['strength']);
+		$this->assertEquals('low', $result['danger']);
+		$this->assertEquals(1, $result['hero_cards_count']);
 
-		// Нет пары
-		$noPairCards = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
-			['rank' => 'K', 'suit' => 'd', 'value' => 13, 'full' => 'Kd'],
-			['rank' => 'Q', 'suit' => 'c', 'value' => 12, 'full' => 'Qc'],
-			['rank' => 'J', 'suit' => 's', 'value' => 11, 'full' => 'Js'],
-			['rank' => 'T', 'suit' => 'h', 'value' => 10, 'full' => 'Th']
+		// 2. Топ-пара на борде (AA) - высокая опасность
+		$heroCards = [['rank' => 'K', 'value' => 13], ['rank' => 'Q', 'value' => 12]];
+		$boardCards = [
+			['rank' => 'A', 'value' => 14],
+			['rank' => 'A', 'value' => 14],
+			['rank' => 'J', 'value' => 11]
 		];
-		$rankCounts = array_count_values(array_column($noPairCards, 'rank'));
-		$result = HandEvaluator::checkPair($noPairCards, $rankCounts, array_slice($noPairCards, 0, 2), array_slice($noPairCards, 2, 3));
-		$this->assertNull($result);
+		$result = $this->callCheckOnePair($heroCards, $boardCards);
+		$this->assertEquals('top_pair', $result['strength']);
+		$this->assertEquals('high', $result['danger']);
+		$this->assertEquals(0, $result['hero_cards_count']);
+
+		// 3. Оверпара у героя (KK на QJ доске) - низкая опасность
+		$heroCards = [['rank' => 'K', 'value' => 13], ['rank' => 'K', 'value' => 13]];
+		$boardCards = [
+			['rank' => 'Q', 'value' => 12],
+			['rank' => 'J', 'value' => 11],
+			['rank' => 'T', 'value' => 10]
+		];
+		$result = $this->callCheckOnePair($heroCards, $boardCards);
+		$this->assertEquals('overpair', $result['strength']);
+		$this->assertEquals('low', $result['danger']);
+		$this->assertEquals(2, $result['hero_cards_count']);
+
+		// 4. Вторая пара у героя (QQ на AKJ доске) - средняя опасность
+		$heroCards = [['rank' => 'Q', 'value' => 12], ['rank' => 'Q', 'value' => 12]];
+		$boardCards = [
+			['rank' => 'A', 'value' => 14],
+			['rank' => 'K', 'value' => 13],
+			['rank' => 'J', 'value' => 11]
+		];
+		$result = $this->callCheckOnePair($heroCards, $boardCards);
+		$this->assertEquals('second_pair', $result['strength']);
+		$this->assertEquals('medium', $result['danger']);
+		$this->assertEquals(2, $result['hero_cards_count']);
+
+		// 5. Третья пара у героя (JJ на AKQ доске) - высокая опасность
+		$heroCards = [['rank' => 'J', 'value' => 11], ['rank' => 'J', 'value' => 11]];
+		$boardCards = [
+			['rank' => 'A', 'value' => 14],
+			['rank' => 'K', 'value' => 13],
+			['rank' => 'Q', 'value' => 12]
+		];
+		$result = $this->callCheckOnePair($heroCards, $boardCards);
+		$this->assertEquals('third_pair', $result['strength']);
+		$this->assertEquals('high', $result['danger']);
+		$this->assertEquals(2, $result['hero_cards_count']);
+
+		// 6. Вторая пара с одной картой героя (Q с Q на борде при AK) - средняя опасность
+		$heroCards = [['rank' => 'Q', 'value' => 12], ['rank' => 'T', 'value' => 10]];
+		$boardCards = [
+			['rank' => 'A', 'value' => 14],
+			['rank' => 'K', 'value' => 13],
+			['rank' => 'Q', 'value' => 12]
+		];
+		$result = $this->callCheckOnePair($heroCards, $boardCards);
+		$this->assertEquals('second_pair', $result['strength']);
+		$this->assertEquals('medium', $result['danger']);
+		$this->assertEquals(1, $result['hero_cards_count']);
+
+		// 7. Третья пара с одной картой героя (J с J на борде при AKQ) - высокая опасность
+		$heroCards = [['rank' => 'J', 'value' => 11], ['rank' => 'T', 'value' => 10]];
+		$boardCards = [
+			['rank' => 'A', 'value' => 14],
+			['rank' => 'K', 'value' => 13],
+			['rank' => 'Q', 'value' => 12],
+			['rank' => 'J', 'value' => 11]
+		];
+		$result = $this->callCheckOnePair($heroCards, $boardCards);
+		$this->assertEquals('third_pair', $result['strength']);
+		$this->assertEquals('high', $result['danger']);
+		$this->assertEquals(1, $result['hero_cards_count']);
+
+		// 8. Нет пар - высокая опасность
+		$heroCards = [['rank' => 'A', 'value' => 14], ['rank' => 'K', 'value' => 13]];
+		$boardCards = [
+			['rank' => 'Q', 'value' => 12],
+			['rank' => 'J', 'value' => 11],
+			['rank' => 'T', 'value' => 10]
+		];
+		$result = $this->callCheckOnePair($heroCards, $boardCards);
+		$this->assertEquals('no_pair', $result['strength']);
+		$this->assertEquals('high', $result['danger']);
+		$this->assertEquals(0, $result['hero_cards_count']);
+
+		// 9. Слабая пара (ниже третьей) - высокая опасность
+		$heroCards = [['rank' => '8', 'value' => 8], ['rank' => '8', 'value' => 8]];
+		$boardCards = [
+			['rank' => 'A', 'value' => 14],
+			['rank' => 'K', 'value' => 13],
+			['rank' => 'Q', 'value' => 12],
+			['rank' => 'J', 'value' => 11]
+		];
+		$result = $this->callCheckOnePair($heroCards, $boardCards);
+		$this->assertEquals('weak_pair', $result['strength']);
+		$this->assertEquals('high', $result['danger']);
+		$this->assertEquals(2, $result['hero_cards_count']);
 	}
 
 	/**
