@@ -692,150 +692,131 @@ class HandEvaluator
 	 * @param array $boardCards Карты на борде
 	 * @return array|null Данные стрита или null
 	 */
-	private static function checkStraight(array $holeCards, array $boardCards): ?array
+	private static function checkStraight(array $heroCards, array $boardCards, array $allCards): ?array
 	{
-		$allCards = array_merge($holeCards, $boardCards);
+		// Объединяем все карты и извлекаем их значения
+		$allCards = array_merge($heroCards, $boardCards);
 		$values = array_column($allCards, 'value');
 		$uniqueValues = array_unique($values);
-
-		// Добавляем младший туз (1) для стрита A-2-3-4-5
-		if (in_array(14, $uniqueValues)) {
-			$uniqueValues[] = 1;
-		}
-
 		rsort($uniqueValues);
 
-		// 1. Поиск стрита
+		// Проверяем наличие стрита (включая колесо A-2-3-4-5)
 		$straightFound = false;
+		$straightHighCard = 0;
 		$straightCards = [];
-		$isWheel = false;
-		$isNut = false;
 
+		// Проверяем обычные стриты
 		for ($i = 0; $i <= count($uniqueValues) - 5; $i++) {
-			if ($uniqueValues[$i] - $uniqueValues[$i+4] == 4) {
+			if ($uniqueValues[$i] - $uniqueValues[$i + 4] === 4) {
 				$straightFound = true;
+				$straightHighCard = $uniqueValues[$i];
 				$straightCards = array_slice($uniqueValues, $i, 5);
-				$isWheel = ($straightCards[4] == 1); // A-2-3-4-5
-				$isNut = ($straightCards[0] == 14 && $straightCards[1] == 13); // A-K-Q-J-T
 				break;
 			}
 		}
 
-		// 2. Если стрит не найден - проверяем потенциал для дро
-		if (!$straightFound) {
-			$danger = 'low';
-			$drawType = 'none';
+		// Проверяем колесо (A-2-3-4-5)
+		if (!$straightFound && in_array(14, $uniqueValues)) {
+			$wheelCheck = [5, 4, 3, 2, 14];
+			$hasWheel = true;
+			foreach ($wheelCheck as $card) {
+				if (!in_array($card, $uniqueValues)) {
+					$hasWheel = false;
+					break;
+				}
+			}
+			if ($hasWheel) {
+				$straightFound = true;
+				$straightHighCard = 5;
+				$straightCards = $wheelCheck;
+			}
+		}
 
-			// Проверяем открытые стрит-дро (8 аутов)
+		if (!$straightFound) {
+			// Проверяем потенциал для стрита (4 карты подряд)
+			$potential = false;
 			for ($i = 0; $i <= count($uniqueValues) - 4; $i++) {
-				if ($uniqueValues[$i] - $uniqueValues[$i+3] == 3) {
-					$drawType = 'open_ended';
-					$danger = 'high';
+				if ($uniqueValues[$i] - $uniqueValues[$i + 3] === 3) {
+					$potential = true;
 					break;
 				}
 			}
 
-			// Проверяем дырявые стрит-дро (4 аута)
-			if ($drawType == 'none') {
-				for ($i = 0; $i <= count($uniqueValues) - 4; $i++) {
-					if ($uniqueValues[$i] - $uniqueValues[$i+3] == 4) {
-						$drawType = 'gutshot';
-						$danger = 'medium';
-						break;
-					}
+			// Проверяем потенциал для колеса (A-2-3-4 или 2-3-4-5)
+			if (!$potential && in_array(14, $uniqueValues)) {
+				$wheelPotential1 = [5, 4, 3, 2];
+				$wheelPotential2 = [4, 3, 2, 14];
+				$count1 = $count2 = 0;
+				foreach ($wheelPotential1 as $card) {
+					if (in_array($card, $uniqueValues)) $count1++;
+				}
+				foreach ($wheelPotential2 as $card) {
+					if (in_array($card, $uniqueValues)) $count2++;
+				}
+				if ($count1 >= 3 || $count2 >= 3) {
+					$potential = true;
 				}
 			}
 
 			return [
 				'strength' => 'no_straight',
-				'danger' => $danger,
-				'draw_type' => $drawType
+				'danger' => $potential ? 'medium' : 'low',
+				'hero_cards_count' => 0
 			];
 		}
 
-		// 3. Анализ положения героя в стрите
-		$heroValues = array_column($holeCards, 'value');
-		$heroInStraight = false;
-		$heroHasTop = false;
-		$heroCardsInStraight = 0;
+		// Определяем, сколько карт героя участвует в стрите
+		$heroValues = array_column($heroCards, 'value');
+		$heroInStraight = count(array_intersect($heroValues, $straightCards));
 
-		foreach ($straightCards as $value) {
-			if (in_array($value, $heroValues)) {
-				$heroInStraight = true;
-				$heroCardsInStraight++;
-				if ($value == ($isWheel ? 5 : max($straightCards))) {
-					$heroHasTop = true;
-				}
-			}
-		}
+		// Определяем уровень опасности
+		$danger = 'none';
 
-		// 4. Оценка опасности стрита
-		$topValue = $isWheel ? 5 : max($straightCards);
-		$danger = 'medium';
-		$dangerReason = 'default';
-		$nutStatus = 'medium';
-
-		// Специальные случаи
-		if ($isNut) {
-			$nutStatus = 'nut';
-			if ($heroHasTop) {
-				$danger = 'none';
-				$dangerReason = 'absolute_nuts';
-			} else {
-				$danger = 'high';
-				$dangerReason = 'nut_straight_without_top';
-			}
+		// Натс-стрит (A-K-Q-J-T) - абсолютная сила
+		if ($straightHighCard === 14 && $straightCards === [14, 13, 12, 11, 10]) {
+			$danger = 'none';
 		}
-		elseif ($isWheel) {
-			$nutStatus = 'weak';
-			$danger = 'high';
-			$dangerReason = 'wheel_vulnerable';
+		// Колесо (A-2-3-4-5) - средняя уязвимость
+		elseif ($straightHighCard === 5 && in_array(14, $straightCards)) {
+			$danger = 'medium';
 		}
+		// Высокий стрит (K-Q-J-T-9 и выше) - если общий, то средняя опасность
+		elseif ($straightHighCard >= 10) {
+			$danger = $heroInStraight > 0 ? 'none' : 'medium';
+		}
+		// Средний стрит (6-9) - всегда средняя опасность, даже с картами героя
+		elseif ($straightHighCard >= 6) {
+			$danger = 'medium';
+		}
+		// Низкий стрит (2-5) - высокая опасность
 		else {
-			// Проверяем возможные более высокие стриты
-			$higherStraightPossible = false;
-			$boardValues = array_column($boardCards, 'value');
-			$maxBoardValue = max($boardValues);
+			$danger = 'high';
+		}
 
-			if ($topValue < 14 && $maxBoardValue > $topValue) {
-				$higherStraightPossible = true;
+		// Если стрит общий (все карты на борде)
+		if ($heroInStraight === 0) {
+			// Натс-стрит - опасности нет
+			if ($straightHighCard === 14 && $straightCards === [14, 13, 12, 11, 10]) {
+				$danger = 'none';
 			}
-
-			// Градация опасности для обычных стритов
-			if ($heroHasTop) {
-				$nutStatus = 'strong';
-				if ($higherStraightPossible) {
-					$danger = 'medium';
-					$dangerReason = 'top_card_but_higher_possible';
-				} else {
-					$danger = 'low';
-					$dangerReason = 'top_card_no_higher_straight';
-				}
-			} else {
-				if ($higherStraightPossible) {
-					$danger = 'very_high';
-					$dangerReason = 'vulnerable_to_higher_straight';
-				} elseif ($topValue >= 10) { // Q-J-T-9-8 и выше
-					$danger = 'medium';
-					$dangerReason = 'medium_straight_position';
-				} else { // 9-8-7-6-5 и ниже
-					$danger = 'high';
-					$dangerReason = 'low_straight_vulnerable';
-				}
+			// K-Q-J-T-9 - средняя опасность
+			elseif ($straightHighCard == 13) {
+				$danger = 'medium';
+			}
+		}
+		// Если только одна карта героя в стрите
+		elseif ($heroInStraight === 1) {
+			// Для средних стритов (6-9) оставляем опасность 'medium'
+			if ($straightHighCard < 6 || $straightHighCard >= 10) {
+				if ($danger === 'none') $danger = 'low';
+				elseif ($danger === 'medium') $danger = 'high';
 			}
 		}
 
 		return [
 			'strength' => 'straight',
-			'cards' => $straightCards,
-			'hero_in_straight' => $heroInStraight,
-			'hero_has_top' => $heroHasTop,
-			'hero_cards_count' => $heroCardsInStraight,
 			'danger' => $danger,
-			'danger_reason' => $dangerReason,
-			'nut_status' => $nutStatus,
-			'is_wheel' => $isWheel,
-			'is_nut' => $isNut
+			'hero_cards_count' => $heroInStraight
 		];
 	}
 

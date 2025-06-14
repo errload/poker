@@ -830,7 +830,7 @@ class HandEvaluatorTest extends TestCase
 		];
 		$result = $this->callCheckStraight($heroCards, $boardCards);
 		$this->assertEquals('straight', $result['strength']);
-		$this->assertEquals('medium', $result['danger'], "Общий стрит не может дать кому то выше - средняя опасность");
+		$this->assertEquals('medium', $result['danger'], "Общий стрит может дать кому то выше - средняя опасность");
 
 		// Колесо (A-2-3-4-5) - средняя уязвимость (может быть перебит стритом от 6)
 		$heroCards = [['rank' => 'A', 'value' => 14], ['rank' => '5', 'value' => 5]];
