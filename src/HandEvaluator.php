@@ -604,75 +604,85 @@ class HandEvaluator
 	}
 
 	/**
-	 * Проверяет наличие флеша (5 карт одной масти) в комбинации карт игрока и общих карт
-	 * @param array $heroCards Карты героя
-	 * @param array $boardCards Общие карты на столе
-	 * @return array|null Возвращает информацию о флеше или null
+	 * Определяет наличие флеша и его характеристики
+	 * @param array $heroCards Карты игрока
+	 * @param array $boardCards Карты на борде
+	 * @return array|null Данные флеша или null
 	 */
-	private static function checkFlush(
-		array $heroCards,
-		array $boardCards,
-		array $dangerThresholds = ['nut' => 14, 'high' => 11, 'medium' => 9, 'low' => 6]
-	): ?array {
-		// 1. Проверка наличия флеша
+	private static function checkFlush(array $heroCards, array $boardCards): ?array
+	{
+		// Находим масть флеша
 		$allCards = array_merge($heroCards, $boardCards);
-		$suitCounts = array_count_values(array_column($allCards, 'suit'));
+		$suits = [];
+		foreach ($allCards as $card) {
+			$suits[$card['suit']][] = $card;
+		}
 
 		$flushSuit = null;
-		foreach ($suitCounts as $suit => $count) {
-			if ($count >= 5) {
+		foreach ($suits as $suit => $cards) {
+			if (count($cards) >= 5) {
 				$flushSuit = $suit;
 				break;
 			}
 		}
 
-		if (!$flushSuit) return null;
-
-		// 2. Анализ карт флеша
-		$flushCards = array_filter($allCards, fn($c) => $c['suit'] === $flushSuit);
-		usort($flushCards, fn($a, $b) => $b['value'] - $a['value']);
-		$topFlushCards = array_slice($flushCards, 0, 5);
-
-		$topValue = $topFlushCards[0]['value'];
-		$bottomValue = $topFlushCards[4]['value'];
-		$heroFlushCards = array_filter($heroCards, fn($c) => $c['suit'] === $flushSuit);
-		$heroFlushValues = array_column($heroFlushCards, 'value');
-		$heroHighest = !empty($heroFlushValues) ? max($heroFlushValues) : 0;
-
-		// 3. ТОЧНАЯ ЛОГИКА ОПРЕДЕЛЕНИЯ ОПАСНОСТИ
-		$danger = 'weak';
-
-		if ($heroHighest === 14) {
-			$danger = 'nut';
-		} elseif ($topValue >= 13) {
-			$danger = 'high';
-		} elseif ($heroHighest === 12) {
-			$danger = 'high';
-		} elseif ($topValue === 12 || $heroHighest === 11) {
-			$danger = 'medium';
-		} elseif ($topValue === 11 || $heroHighest === 10) {
-			$danger = 'low';
+		if (!$flushSuit) {
+			return [
+				'strength' => 'no_flush',
+				'danger' => 'strong'
+			];
 		}
 
-		// 4. Определение уязвимости
-		$boardFlushValues = array_column(
-			array_filter($boardCards, fn($c) => $c['suit'] === $flushSuit),
-			'value'
-		);
-		$isVulnerable = !empty($boardFlushValues) && max($boardFlushValues) > $heroHighest;
+		// Получаем все карты флеша и сортируем
+		$flushCards = array_filter($allCards, fn($c) => $c['suit'] === $flushSuit);
+		usort($flushCards, fn($a, $b) => $b['value'] - $a['value']);
+		$topFlushValue = $flushCards[0]['value'];
 
-		// 5. Дополнительные параметры
-		$heroHasTopCard = $heroHighest === $topValue;
-		$isLow = $topValue <= 10 && $bottomValue <= 7;
+		// Находим максимальную карту героя во флеше
+		$heroFlushCards = array_filter($heroCards, fn($c) => $c['suit'] === $flushSuit);
+		$heroMaxValue = !empty($heroFlushCards) ? max(array_column($heroFlushCards, 'value')) : 0;
+
+		// Проверяем наличие всех возможных старших карт
+		$allPossibleValues = [14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2];
+		$playedValues = array_column($flushCards, 'value');
+
+		// 5. Определяем недостающие старшие карты
+		$missingHigher = [];
+		foreach ($allPossibleValues as $value) {
+			if ($value > $heroMaxValue && !in_array($value, $playedValues)) {
+				$missingHigher[] = $value;
+			}
+		}
+
+		// Определяем danger и hero_has_top
+		$danger = 'high';
+		$heroHasTopCard = false;
+
+		if ($heroMaxValue == 14) {
+			// Случай с тузом у героя
+			$danger = 'nut';
+			$heroHasTopCard = true;
+		} elseif (empty($missingHigher)) {
+			// Все старшие карты в игре
+			$danger = 'nut';
+			$heroHasTopCard = true;
+		} else {
+			// Определяем danger по силе карты героя
+			$danger = match(true) {
+				$heroMaxValue >= 12 => 'low',
+				$heroMaxValue >= 10 => 'medium',
+				default => 'high'
+			};
+			$heroHasTopCard = false;
+		}
 
 		return [
 			'strength' => 'flush',
 			'suit' => $flushSuit,
-			'top_card' => $topValue,
+			'top_card' => $topFlushValue,
 			'hero_has_top' => $heroHasTopCard,
 			'danger' => $danger,
-			'vulnerable' => $isVulnerable,
-			'is_low' => $isLow
+			'is_low' => $heroMaxValue <= 7
 		];
 	}
 

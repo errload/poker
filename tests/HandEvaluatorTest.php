@@ -645,10 +645,10 @@ class HandEvaluatorTest extends TestCase
 
 	public function testCheckFlush()
 	{
-		// Натс-флеш (A-high) с разными картами
+		// Натс-флеш (A-high)
 		$heroCards = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
-			['rank' => '7', 'suit' => 'h', 'value' => 7, 'full' => '7h']
+			['rank' => 'A', 'suit' => 'h', 'value' => '14', 'full' => 'Ah'],
+			['rank' => '7', 'suit' => 'h', 'value' => '7', 'full' => '7h']
 		];
 		$boardCards = [
 			['rank' => 'K', 'suit' => 'h', 'value' => 13, 'full' => 'Kh'],
@@ -662,72 +662,122 @@ class HandEvaluatorTest extends TestCase
 		$this->assertEquals('nut', $result['danger']);
 		$this->assertTrue($result['hero_has_top']);
 
-		// Сильный флеш (Q-high), уязвимый (у соперника может быть K)
+		// Натс-флеш (Q-high, туз и король на борде)
 		$heroCards = [
-			['rank' => 'Q', 'suit' => 'd', 'value' => 12, 'full' => 'Qd'],
-			['rank' => '9', 'suit' => 'd', 'value' => 9, 'full' => '9d']
+			['rank' => 'Q', 'suit' => 'h', 'value' => '12', 'full' => 'Qh'],
+			['rank' => '7', 'suit' => 'h', 'value' => '7', 'full' => '7h']
 		];
 		$boardCards = [
-			['rank' => 'J', 'suit' => 'd', 'value' => 11, 'full' => 'Jd'],
-			['rank' => '8', 'suit' => 'd', 'value' => 8, 'full' => '8d'],
-			['rank' => '3', 'suit' => 'd', 'value' => 3, 'full' => '3d']
+			['rank' => 'A', 'suit' => 'h', 'value' => '14', 'full' => 'Ah'],
+			['rank' => '2', 'suit' => 'h', 'value' => '2', 'full' => '2h'],
+			['rank' => 'Q', 'suit' => 's', 'value' => '12', 'full' => 'Qs'],
+			['rank' => 'J', 'suit' => 'h', 'value' => '11', 'full' => 'Jh'],
+			['rank' => 'K', 'suit' => 'h', 'value' => '13', 'full' => 'Kh']
 		];
 
 		$result = $this->callCheckFlush($heroCards, $boardCards);
-		$this->assertEquals('high', $result['danger']);
+		$this->assertEquals('nut', $result['danger']);
 		$this->assertTrue($result['hero_has_top']);
-		$this->assertFalse($result['vulnerable']);
 
-		// Средний флеш (T-high) с "дырками"
+		// K-high флеш - danger = 'low' (почти неуязвим)
 		$heroCards = [
-			['rank' => 'T', 'suit' => 'c', 'value' => 10, 'full' => 'Tc'],
-			['rank' => '4', 'suit' => 'c', 'value' => 4, 'full' => '4c']
+			['rank' => 'K', 'suit' => 'h', 'value' => '13', 'full' => 'Kh'],
+			['rank' => '7', 'suit' => 'h', 'value' => '7', 'full' => '7h']
 		];
 		$boardCards = [
-			['rank' => '8', 'suit' => 'c', 'value' => 8, 'full' => '8c'],
-			['rank' => '7', 'suit' => 'c', 'value' => 7, 'full' => '7c'],
-			['rank' => '2', 'suit' => 'c', 'value' => 2, 'full' => '2c'],
-			['rank' => 'A', 'suit' => 's', 'value' => 14, 'full' => 'As'],
-			['rank' => 'K', 'suit' => 'c', 'value' => 13, 'full' => 'Kc']
+			['rank' => '6', 'suit' => 'h', 'value' => '6', 'full' => '6h'],
+			['rank' => '2', 'suit' => 'h', 'value' => '2', 'full' => '2h'],
+			['rank' => 'Q', 'suit' => 's', 'value' => '12', 'full' => 'Qs'],
+			['rank' => '4', 'suit' => 'h', 'value' => '4', 'full' => '4h']
 		];
-
-		$result = $this->callCheckFlush($heroCards, $boardCards);
-		$this->assertEquals('medium', $result['danger']);
-		$this->assertTrue($result['hero_has_top']);
-		$this->assertTrue($result['is_low']);
-
-		// Слабый флеш (7-high) с разбросанными картами
-		$heroCards = [
-			['rank' => '7', 'suit' => 's', 'value' => 7, 'full' => '7s'],
-			['rank' => '3', 'suit' => 's', 'value' => 3, 'full' => '3s']
-		];
-		$boardCards = [
-			['rank' => '5', 'suit' => 's', 'value' => 5, 'full' => '5s'],
-			['rank' => '4', 'suit' => 's', 'value' => 4, 'full' => '4s'],
-			['rank' => '2', 'suit' => 's', 'value' => 2, 'full' => '2s'],
-			['rank' => 'Q', 'suit' => 'd', 'value' => 12, 'full' => 'Qd'],
-			['rank' => 'J', 'suit' => 'h', 'value' => 11, 'full' => 'Jh']
-		];
-
 		$result = $this->callCheckFlush($heroCards, $boardCards);
 		$this->assertEquals('low', $result['danger']);
-		$this->assertTrue($result['hero_has_top']);
-		$this->assertTrue($result['is_low']);
 
-		// Нет флеша (только 4 карты одной масти)
+		// Q-high флеш - danger = 'low' (но ниже K)
 		$heroCards = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
-			['rank' => 'K', 'suit' => 'd', 'value' => 13, 'full' => 'Kd']
+			['rank' => '4', 'suit' => 'd', 'value' => '4', 'full' => '4d'],
+			['rank' => 'Q', 'suit' => 'd', 'value' => '12', 'full' => 'Qd']
 		];
 		$boardCards = [
-			['rank' => 'Q', 'suit' => 'h', 'value' => 12, 'full' => 'Qh'],
-			['rank' => 'J', 'suit' => 'h', 'value' => 11, 'full' => 'Jh'],
-			['rank' => 'T', 'suit' => 'h', 'value' => 10, 'full' => 'Th'],
-			['rank' => '9', 'suit' => 'c', 'value' => 9, 'full' => '9c']
+			['rank' => '6', 'suit' => 'd', 'value' => '6', 'full' => '6d'],
+			['rank' => '2', 'suit' => 'h', 'value' => '2', 'full' => '2h'],
+			['rank' => 'T', 'suit' => 'd', 'value' => '10', 'full' => 'Td'],
+			['rank' => '4', 'suit' => 'd', 'value' => '4', 'full' => '4d']
 		];
-
 		$result = $this->callCheckFlush($heroCards, $boardCards);
-		$this->assertNull($result);
+		$this->assertEquals('low', $result['danger']);
+
+		// J-high флеш - danger = 'medium' (но ниже K)
+		$heroCards = [
+			['rank' => '4', 'suit' => 's', 'value' => '4', 'full' => '4s'],
+			['rank' => 'J', 'suit' => 'd', 'value' => '11', 'full' => 'Jd']
+		];
+		$boardCards = [
+			['rank' => '6', 'suit' => 'd', 'value' => '6', 'full' => '6d'],
+			['rank' => '2', 'suit' => 'h', 'value' => '2', 'full' => '2h'],
+			['rank' => 'T', 'suit' => 'd', 'value' => '10', 'full' => 'Td'],
+			['rank' => 'K', 'suit' => 'd', 'value' => '13', 'full' => 'Kd'],
+			['rank' => 'J', 'suit' => 'h', 'value' => '11', 'full' => 'Jh'],
+			['rank' => '4', 'suit' => 'd', 'value' => '4', 'full' => '4d']
+		];
+		$result = $this->callCheckFlush($heroCards, $boardCards);
+		$this->assertEquals('medium', $result['danger']);
+
+		// T-high флеш - danger = 'medium' (умеренный риск)
+		$heroCards = [
+			['rank' => '4', 'suit' => 'd', 'value' => '4', 'full' => '4d'],
+			['rank' => 'T', 'suit' => 'd', 'value' => '10', 'full' => 'Td']
+		];
+		$boardCards = [
+			['rank' => '6', 'suit' => 'd', 'value' => '6', 'full' => '6d'],
+			['rank' => '2', 'suit' => 'h', 'value' => '2', 'full' => '2h'],
+			['rank' => 'K', 'suit' => 'd', 'value' => '13', 'full' => 'Kd'],
+			['rank' => '4', 'suit' => 'd', 'value' => '4', 'full' => '4d']
+		];
+		$result = $this->callCheckFlush($heroCards, $boardCards);
+		$this->assertEquals('medium', $result['danger']);
+
+		// 7-high флеш - danger = 'high' (высокий риск!)
+		$heroCards = [
+			['rank' => '4', 'suit' => 'd', 'value' => '4', 'full' => '4d'],
+			['rank' => '7', 'suit' => 'd', 'value' => '7', 'full' => '7d']
+		];
+		$boardCards = [
+			['rank' => '6', 'suit' => 'd', 'value' => '6', 'full' => '6d'],
+			['rank' => '2', 'suit' => 'h', 'value' => '2', 'full' => '2h'],
+			['rank' => 'K', 'suit' => 'd', 'value' => '13', 'full' => 'Kd'],
+			['rank' => '4', 'suit' => 'd', 'value' => '4', 'full' => '4d']
+		];
+		$result = $this->callCheckFlush($heroCards, $boardCards);
+		$this->assertEquals('high', $result['danger']);
+
+		// 3-high флеш - danger = 'high' (высокий риск!)
+		$heroCards = [
+			['rank' => '2', 'suit' => 'd', 'value' => '2', 'full' => '2d'],
+			['rank' => '3', 'suit' => 'd', 'value' => '3', 'full' => '3d']
+		];
+		$boardCards = [
+			['rank' => '6', 'suit' => 'd', 'value' => '6', 'full' => '6d'],
+			['rank' => '2', 'suit' => 'h', 'value' => '2', 'full' => '2h'],
+			['rank' => 'K', 'suit' => 'd', 'value' => '13', 'full' => 'Kd'],
+			['rank' => '4', 'suit' => 'd', 'value' => '4', 'full' => '4d']
+		];
+		$result = $this->callCheckFlush($heroCards, $boardCards);
+		$this->assertEquals('high', $result['danger']);
+
+		// Нет флеша - danger = 'strong' (очень высокий риск!)
+		$heroCards = [
+			['rank' => 'K', 'suit' => 'h', 'value' => '13', 'full' => 'Kh'],
+			['rank' => 'Q', 'suit' => 's', 'value' => '12', 'full' => 'Qs']
+		];
+		$boardCards = [
+			['rank' => '6', 'suit' => 'd', 'value' => '6', 'full' => '6d'],
+			['rank' => '2', 'suit' => 'h', 'value' => '2', 'full' => '2h'],
+			['rank' => 'K', 'suit' => 'd', 'value' => '13', 'full' => 'Kd'],
+			['rank' => '4', 'suit' => 'd', 'value' => '4', 'full' => '4d']
+		];
+		$result = $this->callCheckFlush($heroCards, $boardCards);
+		$this->assertEquals('strong', $result['danger']);
 	}
 
 	/**
