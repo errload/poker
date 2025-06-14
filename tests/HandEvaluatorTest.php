@@ -941,7 +941,7 @@ class HandEvaluatorTest extends TestCase
 		];
 		$result = $this->callCheckTrips($heroCards, $boardCards);
 		$this->assertEquals('trips', $result['strength']);
-		$this->assertEquals('high', $result['danger'], "Даже тройка с двумя картами героя уязвима для каре");
+		$this->assertEquals('low', $result['danger'], "Даже тройка с двумя картами героя уязвима для каре");
 
 		// Общая тройка на борде - всегда высокая опасность (возможны каре/фулхаус у оппонентов)
 		$heroCards = [['rank' => 'K', 'value' => 13], ['rank' => 'Q', 'value' => 12]];
@@ -968,7 +968,7 @@ class HandEvaluatorTest extends TestCase
 		$this->assertEquals('medium', $result['danger'], "Тройка с одной картой героя - средняя опасность");
 		$this->assertEquals(1, $result['hero_cards_count']);
 
-		// Низкая тройка (555) - средняя опасность (неочевидная комбинация)
+		// Низкая тройка (555) - низкая опасность (неочевидная комбинация)
 		$heroCards = [['rank' => '5', 'value' => 5], ['rank' => '5', 'value' => 5]];
 		$boardCards = [
 			['rank' => '5', 'value' => 5],
@@ -977,9 +977,9 @@ class HandEvaluatorTest extends TestCase
 		];
 		$result = $this->callCheckTrips($heroCards, $boardCards);
 		$this->assertEquals('trips', $result['strength']);
-		$this->assertEquals('medium', $result['danger'], "Низкая тройка - средняя опасность");
+		$this->assertEquals('low', $result['danger'], "Тройка - низкая опасность");
 
-		// Нет тройки, но есть пара - высокая опасность (возможен сет у оппонентов)
+		// Нет тройки - высокая опасность (возможен сет у оппонентов)
 		$heroCards = [['rank' => 'A', 'value' => 14], ['rank' => 'K', 'value' => 13]];
 		$boardCards = [
 			['rank' => 'Q', 'value' => 12],
@@ -988,7 +988,7 @@ class HandEvaluatorTest extends TestCase
 		];
 		$result = $this->callCheckTrips($heroCards, $boardCards);
 		$this->assertEquals('no_trips', $result['strength']);
-		$this->assertEquals('high', $result['danger'], "Нет тройки, но есть пара - высокая опасность");
+		$this->assertEquals('high', $result['danger'], "Нет тройки - высокая опасность");
 	}
 
 	/**

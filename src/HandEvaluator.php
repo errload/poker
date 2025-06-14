@@ -806,21 +806,9 @@ class HandEvaluator
 
 	/**
 	 * Проверяет наличие тройки (сета) и определяет уровень ее опасности
-	 *
-	 * Опасность определяется по следующим критериям:
-	 * - Общие тройки (все 3 карты на борде) - всегда высокая опасность (high)
-	 * - Тройки с двумя картами героя - высокая опасность (high)
-	 * - Тройки с одной картой героя - средняя опасность (medium)
-	 * - Низкие тройки (2-7) - средняя опасность (medium)
-	 * - При отсутствии тройки, но наличии пары - высокая опасность (high)
-	 *
-	 * @param array $heroCards Карты героя в формате [['rank' => 'A', 'value' => 14], ...]
-	 * @param array $boardCards Карты на борде в том же формате
-	 * @param array $allCards Все карты (heroCards + boardCards)
-	 * @return array Массив с результатами:
-	 *               - 'strength': 'trips'|'no_trips'
-	 *               - 'danger': 'none'|'low'|'medium'|'high'
-	 *               - 'hero_cards_count': количество карт героя в тройке (0-2)
+	 * @param array $heroCards Карты героя
+	 * @param array $boardCards Карты на борде
+	 * @return array Массив с результатами или null
 	 */
 	private static function checkTrips(array $heroCards, array $boardCards): ?array
 	{
@@ -838,10 +826,9 @@ class HandEvaluator
 			}
 		}
 
+		// Проверяем наличие пары
 		if (!$tripsValue) {
-			// Проверяем наличие пары (для определения опасности)
 			$hasPair = max($valueCounts) >= 2;
-
 			return [
 				'strength' => 'no_trips',
 				'danger' => $hasPair ? 'high' : 'low',
@@ -853,26 +840,25 @@ class HandEvaluator
 		$heroValues = array_column($heroCards, 'value');
 		$heroInTrips = min(2, count(array_keys($heroValues, $tripsValue)));
 
-		// Определяем уровень опасности
-		$danger = 'high'; // По умолчанию высокая опасность для всех троек
+		// Базовый уровень опасности
+		$danger = 'high';
 
-		// Если тройка состоит из двух карт героя и одной на борде
+		// Тройка с двумя картами героя - low опасность
 		if ($heroInTrips === 2) {
-			$danger = 'high'; // Все равно уязвима для каре
+			$danger = 'low';
 		}
-		// Если тройка с одной картой героя
+		// Тройка с одной картой героя - medium опасность
 		elseif ($heroInTrips === 1) {
-			$danger = 'medium'; // Средняя опасность
+			$danger = 'medium';
 		}
-		// Низкие тройки (2-7)
-		elseif ($tripsValue <= 7) {
-			$danger = 'medium'; // Менее очевидны для оппонентов
+		// Низкие тройки (2-7) - medium опасность
+		elseif ($tripsValue >= 2 && $tripsValue <= 7) {
+			$danger = 'medium';
 		}
 
-		// Если тройка полностью на борде - всегда высокая опасность
+		// Если тройка полностью на борде - всегда high опасность
 		$boardValues = array_column($boardCards, 'value');
-		$tripsOnBoard = count(array_keys($boardValues, $tripsValue)) >= 3;
-		if ($tripsOnBoard) {
+		if (count(array_keys($boardValues, $tripsValue)) >= 3) {
 			$danger = 'high';
 		}
 
