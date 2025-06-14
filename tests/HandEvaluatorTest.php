@@ -800,7 +800,7 @@ class HandEvaluatorTest extends TestCase
 			['rank' => 'Q', 'value' => 12],
 			['rank' => 'J', 'value' => 11],
 			['rank' => 'T', 'value' => 10],
-			['rank' => '2', 'value' => 2] // 4-я карта борда
+			['rank' => '2', 'value' => 2]
 		];
 		$result = $this->callCheckStraight($heroCards, $boardCards);
 		$this->assertEquals('straight', $result['strength']);
@@ -838,7 +838,7 @@ class HandEvaluatorTest extends TestCase
 			['rank' => '2', 'value' => 2],
 			['rank' => '3', 'value' => 3],
 			['rank' => '4', 'value' => 4],
-			['rank' => 'K', 'value' => 13] // 4-я карта борда
+			['rank' => 'K', 'value' => 13]
 		];
 		$result = $this->callCheckStraight($heroCards, $boardCards);
 		$this->assertEquals('straight', $result['strength']);
@@ -850,7 +850,7 @@ class HandEvaluatorTest extends TestCase
 			['rank' => 'J', 'value' => 11],
 			['rank' => 'T', 'value' => 10],
 			['rank' => '9', 'value' => 9],
-			['rank' => '2', 'value' => 2] // 4-я карта борда
+			['rank' => '2', 'value' => 2]
 		];
 		$result = $this->callCheckStraight($heroCards, $boardCards);
 		$this->assertEquals('straight', $result['strength']);
@@ -862,7 +862,7 @@ class HandEvaluatorTest extends TestCase
 			['rank' => '6', 'value' => 6],
 			['rank' => '5', 'value' => 5],
 			['rank' => '4', 'value' => 4],
-			['rank' => 'K', 'value' => 13] // 4-я карта борда
+			['rank' => 'K', 'value' => 13]
 		];
 		$result = $this->callCheckStraight($heroCards, $boardCards);
 		$this->assertEquals('straight', $result['strength']);
@@ -874,11 +874,11 @@ class HandEvaluatorTest extends TestCase
 			['rank' => '7', 'value' => 7],
 			['rank' => '6', 'value' => 6],
 			['rank' => '5', 'value' => 5],
-			['rank' => '4', 'value' => 4] // 4-я карта борда
+			['rank' => '4', 'value' => 4]
 		];
 		$result = $this->callCheckStraight($heroCards, $boardCards);
 		$this->assertEquals('straight', $result['strength']);
-		$this->assertEquals('medium', $result['danger'], "Стрит с одной картой героя уязвим");
+		$this->assertEquals('medium', $result['danger'], "Стрит с одной высокой картой героя уязвим");
 		$this->assertEquals(1, $result['hero_cards_count']);
 
 		// Стрит с одной картой героя - высокая опасность
@@ -887,11 +887,11 @@ class HandEvaluatorTest extends TestCase
 			['rank' => '7', 'value' => 7],
 			['rank' => '6', 'value' => 6],
 			['rank' => '5', 'value' => 5],
-			['rank' => '4', 'value' => 4] // 4-я карта борда
+			['rank' => '4', 'value' => 4]
 		];
 		$result = $this->callCheckStraight($heroCards, $boardCards);
 		$this->assertEquals('straight', $result['strength']);
-		$this->assertEquals('high', $result['danger'], "Стрит с одной картой героя уязвим");
+		$this->assertEquals('high', $result['danger'], "Стрит с одной низкой картой героя уязвим");
 		$this->assertEquals(1, $result['hero_cards_count']);
 
 		// Уязвимый стрит с возможным перебитием (Q-J-T-9-8 при наличии K на борде)
@@ -900,7 +900,7 @@ class HandEvaluatorTest extends TestCase
 			['rank' => 'J', 'value' => 11],
 			['rank' => 'T', 'value' => 10],
 			['rank' => '9', 'value' => 9],
-			['rank' => 'K', 'value' => 13] // 4-я карта борда (может дать более высокий стрит)
+			['rank' => 'K', 'value' => 13]
 		];
 		$result = $this->callCheckStraight($heroCards, $boardCards);
 		$this->assertEquals('straight', $result['strength']);
