@@ -155,6 +155,12 @@ try {
 //					'main' => ['As', 'Ks', 'Qs', 'Js', '9s'],
 //					'kickers' => []
 //				],
+//				'type' => 'preflop',
+//				'strength' => 'strong',
+//				'components' => [
+//					'cards' => ['As', 'Kd']
+//				],
+//				'description' => 'AK offsuit'
 			],
 			'draws' => [
 				[
