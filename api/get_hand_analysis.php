@@ -157,9 +157,7 @@ try {
 //				],
 //				'type' => 'preflop',
 //				'strength' => 'strong',
-//				'components' => [
-//					'cards' => ['As', 'Kd']
-//				],
+//				'components' => ['cards' => ['As', 'Kd']],
 //				'description' => 'AK offsuit'
 			],
 			'draws' => [
