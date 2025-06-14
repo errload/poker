@@ -45,74 +45,109 @@ try {
 	);
 
 //{
-//	"tournament_stage": "late", // "early", "middle", "late", "final"
+//	"tournament_stage": "late",
+//	"game_context": {
+//		"blinds": [1000, 2000],
+//		"pot": {
+//			"current": 42000,
+//			"hero_equity": 35
+//		}
+//	},
 //	"hero": {
 //		"position": "BTN",
 //		"cards": ["As", "Kd"],
 //		"stack": 32000,
-//		"starting_stack": 50000
+//		"starting_stack": 50000,
+//		"aggressor": true  // Герой был последним агрессором (рейзил префлоп)
 //	},
 //	"board": ["8h", "9s", "2d", "Qc", "3h"],
-//	"hand_strength": {
+//	"hand_analysis": {
 //		"hero_combination": {
 //			"type": "top_pair",
-//			"strength": "strong" // Топ-пара с тузом
+//			"strength": "strong",
+//			"kicker": "ace"
 //		},
-//		"possible_improvements": [
-//			{ "type": "flush_draw", "strength": "nut" }, // Флеш-дро с тузом
-//			{ "type": "straight_draw", "strength": "medium" } // Двустороннее стрит-дро (например, 7T на борде 89J)
+//		"draws": [
+//			{
+//				"type": "flush_draw",
+//				"strength": "nut",
+//				"outs": 9
+//			},
+//			{
+//				"type": "straight_draw",
+//				"strength": "medium",
+//				"outs": 4
+//			}
 //		],
 //		"threats": [
-//			{ "type": "flush", "strength": "strong" }, // Флеш оппонента (например, с Qx)
-//			{ "type": "straight", "strength": "nut" }, // Стрит с QJ (натс на этом борде)
-//			{ "type": "set", "strength": "medium" } // Сет (опасен, но не натс)
+//			{
+//				"type": "flush",
+//				"strength": "strong",
+//				"description": "Opponent may have Qx flush"
+//			},
+//			{
+//				"type": "straight",
+//				"strength": "nut",
+//				"description": "QJ makes nut straight"
+//			}
 //		]
 //	},
-//	"actions": {
-//		"preflop": [
-//			{ "player_id": "Villian1", "position": "UTG", "action": "raise_2.5x" },
-//			{ "player_id": "Villian2", "position": "CO", "action": "call" },
-//			{ "player_id": "Hero", "position": "BTN", "action": "raise_3x" },
-//			{ "player_id": "Villian3", "position": "SB", "action": "fold" },
-//			{ "player_id": "Villian4", "position": "BB", "action": "fold" },
-//			{ "player_id": "Villian1", "position": "UTG", "action": "call" },
-//			{ "player_id": "Villian2", "position": "CO", "action": "call" }
-//		],
-//		"flop": [
-//			{ "player_id": "Villian1", "position": "UTG", "action": "check" },
-//			{ "player_id": "Villian2", "position": "CO", "action": "check" },
-//			{ "player_id": "Hero", "position": "BTN", "action": "bet_2/3_pot" },
-//			{ "player_id": "Villian1", "position": "UTG", "action": "fold" },
-//			{ "player_id": "Villian2", "position": "CO", "action": "call" }
-//		],
-//		"turn": [
-//			{ "player_id": "Villian2", "position": "CO", "action": "check" },
-//			{ "player_id": "Hero", "position": "BTN", "action": "bet_1/2_pot" },
-//			{ "player_id": "Villian2", "position": "CO", "action": "call" }
-//		],
-//		"river": [
-//			{ "player_id": "Villian2", "position": "CO", "action": "check" },
-//			{ "player_id": "Hero", "position": "BTN", "action": "?" }
-//		]
-//	},
-//	"player_stats": {
-//		"Villian1": {
-//			"VPIP": 28,
-//			"PFR": 18,
-//			"AF": 2.5,
-//			"fold_to_cbet": 65
-//		},
-//		"Villian2": {
-//			"VPIP": 35,
-//			"PFR": 22,
-//			"AF": 1.8,
-//			"fold_to_cbet": 45,
-//			"WTSD": 30
+//	"action_flow": {
+//		"current_street": "river",
+//		"history": {
+//			"preflop": [
+//				{ "player": "Villian1", "position": "UTG", "action": "raise", "amount": 2.5 },
+//				{ "player": "Villian2", "position": "CO", "action": "call" },
+//				{ "player": "Hero", "position": "BTN", "action": "raise", "amount": 3 },
+//				{ "player": "SB", "action": "fold" },
+//				{ "player": "BB", "action": "fold" },
+//				{ "player": "Villian1", "action": "call" },
+//				{ "player": "Villian2", "action": "call" }
+//			],
+//			"flop": [
+//				{ "player": "Villian1", "action": "check" },
+//				{ "player": "Villian2", "action": "check" },
+//				{ "player": "Hero", "action": "bet", "size": "2/3_pot" },
+//				{ "player": "Villian1", "action": "fold" },
+//				{ "player": "Villian2", "action": "call" }
+//			],
+//			"turn": [
+//				{ "player": "Villian2", "action": "check" },
+//				{ "player": "Hero", "action": "bet", "size": "1/2_pot" },
+//				{ "player": "Villian2", "action": "call" }
+//			],
+//			"river": [
+//				{ "player": "Villian2", "action": "check" },
+//				{ "player": "Hero", "action": "decision_pending" }
+//			]
 //		}
 //	},
-//	"pot": {
-//		"current": 42000,
-//		"hero_equity": 35
+//	"opponent_profiles": {
+//		"Villian1": {
+//			"stats": {
+//				"VPIP": 28,
+//				"PFR": 18,
+//				"aggression_factor": 2.5,
+//				"fold_to_cbet": 65
+//			},
+//			"tendencies": ["tight", "positional"]
+//		},
+//		"Villian2": {
+//			"stats": {
+//				"VPIP": 35,
+//				"PFR": 22,
+//				"aggression_factor": 1.8,
+//				"fold_to_cbet": 45,
+//				"WTSD": 30
+//			},
+//			"tendencies": ["calls_stations", "weak_river"]
+//		}
+//	},
+//	"decision_context": {
+//		"recommended_actions": ["bet", "check"],
+//		"illegal_actions": ["fold"],
+//		"pot_odds": 4.2,
+//		"stack_to_pot_ratio": 0.76
 //	}
 //}
 
@@ -160,6 +195,45 @@ try {
 //		}
 //	}
 //}
+
+//	nut, strong, medium, weak
+
+//1. Дро-комбинации (Draws)
+//Комбинация	Пример (рука + борд)	Примечание
+//"flush_draw"	A♠ K♠ на 2♠ 5♠ 9♥	4 карты одной масти
+//"straight_draw"	7♦ 8♦ на 5♣ 6♥ 9♠	Открытый (8 аутов)
+//"gutshot_draw"	J♣ T♦ на 8♠ 9♥ A♦	Гатошот (4 аута)
+//"backdoor_flush"	Q♣ 2♣ на K♠ T♣ 3♦	Бэкдор-флеш (2 карты масти)
+//"backdoor_straight"	4♥ 5♠ на 2♦ 7♣ 9♠	Бэкдор-стрит
+//
+//2. Сделанные комбинации (Made Hands)
+//Комбинация	Пример (рука + борд)	Примечание
+//"high_card"	A♣ J♦ на 2♥ 5♦ 8♠	Старшая карта
+//"pair"	K♠ Q♥ на K♦ 3♠ 7♥	Одна пара
+//"two_pair"	J♣ J♦ на 5♥ 5♦ T♠	Две пары
+//"set"	4♠ 4♥ на 4♦ 9♣ 2♠	Сет (пара в руке + одна на борде)
+//"trips"	A♠ 2♦ на A♥ A♣ 5♠	Трипс (пара на борде + одна в руке)
+//"straight"	6♠ 7♥ на 8♦ 9♣ T♠	Стрит
+//"flush"	K♣ T♣ на 2♣ 5♣ 9♣	Флеш
+//"full_house"	Q♦ Q♥ на Q♠ 9♦ 9♣	Фул-хаус
+//"quads"	5♠ 5♦ на 5♥ 5♣ J♠	Каре
+//"straight_flush"	8♠ 9♠ на T♠ J♠ Q♠	Стрит-флеш
+//"royal_flush"	A♠ K♠ на Q♠ J♠ T♠	Роял-флеш
+//
+//3. Специальные случаи
+//Комбинация	Пример (рука + борд)	Примечание
+//"overpair"	A♠ A♦ на K♥ 7♦ 2♣	Пара выше борда
+//"top_pair"	K♠ Q♦ на K♥ 5♠ 2♦	Пара со старшей картой борда
+//"middle_pair"	J♠ T♦ на Q♥ J♦ 3♠	Пара со средней картой борда
+//"weak_pair"	6♠ 4♥ на A♦ 6♣ 2♠	Пара с низкой картой
+//"pair+draw"	8♠ 9♠ на 7♥ T♠ J♦	Пара + стрит/флеш-дро
+//
+//4. Угрозы (Threats)
+//Для описания возможных рук оппонента:
+//"flush_threat" (флеш на борде)
+//"straight_threat" (4 в ряд на борде)
+//"paired_board" (пара на борде → риск сета)
+//"overcards" (карты выше вашей пары, например, A♥ на Q♦ Q♠)
 
 	$result = HandEvaluator::evaluateHand($pdo, $input['hand_id']);
 	print_r($result);
