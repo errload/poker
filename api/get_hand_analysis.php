@@ -151,11 +151,13 @@ try {
 				[
 					'type' => 'flush_draw',
 					'strength' => 'nut',
+					'backdoor' => false,
 					'outs' => 9
 				],
 				[
 					'type' => 'straight_draw',
 					'strength' => 'medium',
+					'backdoor' => true,
 					'outs' => 4
 				]
 			],
@@ -176,9 +178,9 @@ try {
 			'current_street' => 'river',
 			'history' => [
 				'preflop' => [
-					[ 'player' => 'Villian1', 'position' => 'UTG', 'action' => 'raise', 'amount' => 2.5 ],
+					[ 'player' => 'Villian1', 'position' => 'UTG', 'action' => 'raise', 'amount_bb' => 2.5 ],
 					[ 'player' => 'Villian2', 'position' => 'CO', 'action' => 'call' ],
-					[ 'player' => 'Hero', 'position' => 'BTN', 'action' => 'raise', 'amount' => 3 ],
+					[ 'player' => 'Hero', 'position' => 'BTN', 'action' => 'raise', 'amount_bb' => 3 ],
 					[ 'player' => 'SB', 'action' => 'fold' ],
 					[ 'player' => 'BB', 'action' => 'fold' ],
 					[ 'player' => 'Villian1', 'action' => 'call' ],
@@ -201,11 +203,13 @@ try {
 					[ 'player' => 'Hero', 'action' => '?' ]
 				]
 			],
-			'aggressor' => [
-				'street' => 'preflop',
-				'player' => 'Hero',
-				'action' => 'raise'
-			]
+			'street_aggressors' => [
+				'preflop' => 'Villian1',
+				'flop' => 'Villian2',
+				'turn' => null,
+				'river' => 'Hero'
+			],
+			'last_aggressor' => 'Hero'
 		],
 		'opponent_profiles' => [ // ?
 			'Villian1' => [
@@ -231,7 +235,7 @@ try {
 				]
 			]
 		],
-		'ecision_context' => [ // ?
+		'decision_context' => [ // ?
 			'recommended_actions' => ['bet', 'check'],
 			'illegal_actions' => ['fold'],
 			'pot_odds' => 4.2,
