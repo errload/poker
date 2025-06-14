@@ -1113,6 +1113,14 @@ class HandEvaluatorTest extends TestCase
 	 * Тестирует метод checkPair()
 	 * Проверяет определение пары
 	 */
+	private function callCheckPair(array $heroCards, array $boardCards): ?array
+	{
+		$reflector = new \ReflectionClass(HandEvaluator::class);
+		$method = $reflector->getMethod('checkTwoPair');
+		$method->setAccessible(true);
+		return $method->invokeArgs(null, [$heroCards, $boardCards]);
+	}
+
 	public function testCheckPair()
 	{
 		$pairCards = [
