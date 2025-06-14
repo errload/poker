@@ -143,9 +143,18 @@ try {
 		'board' => ['8h', '9s', '2d', 'Qc', '3h'], // ?
 		'hand_analysis' => [ // ?
 			'hero_combination' => [
-				'type' => 'top_pair',
+				'type' => 'two_pair',
 				'strength' => 'strong',
-				'kicker' => 'ace'
+				'components' => [
+					'main' => ['Ah', 'Ad', 'Kc', 'Kd'],
+					'kickers' => ['Qs']
+				],
+//				'type' => 'flush',
+//				'strength' => 'medium',
+//				'components' => [
+//					'main' => ['As', 'Ks', 'Qs', 'Js', '9s'],
+//					'kickers' => []
+//				],
 			],
 			'draws' => [
 				[
@@ -243,9 +252,7 @@ try {
 		]
 	];
 
-	$result = HandEvaluator::evaluateHand($pdo, $input['hand_id']);
-	print_r($result);
-
+	print_r($response);
 	die();
 
 	// 1. Get basic hand information
