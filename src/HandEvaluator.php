@@ -686,44 +686,156 @@ class HandEvaluator
 		];
 	}
 
-	public static function checkStraight(array $allCards, array $values): ?array
+	/**
+	 * Определяет наличие стрита и его характеристики
+	 * @param array $heroCards Карты игрока
+	 * @param array $boardCards Карты на борде
+	 * @return array|null Данные стрита или null
+	 */
+	private static function checkStraight(array $holeCards, array $boardCards): ?array
 	{
+		$allCards = array_merge($holeCards, $boardCards);
+		$values = array_column($allCards, 'value');
 		$uniqueValues = array_unique($values);
-		rsort($uniqueValues);
 
-		// Проверка для обычного стрита (A-5-4-3-2)
+		// Добавляем младший туз (1) для стрита A-2-3-4-5
 		if (in_array(14, $uniqueValues)) {
-			$uniqueValues[] = 1; // Добавляем младший туз для проверки стрита A-2-3-4-5
+			$uniqueValues[] = 1;
 		}
 
-		$uniqueValues = array_unique($uniqueValues);
-		sort($uniqueValues);
+		rsort($uniqueValues);
 
-		$straightLength = 1;
+		// 1. Поиск стрита
+		$straightFound = false;
 		$straightCards = [];
-		for ($i = 1; $i < count($uniqueValues); $i++) {
-			if ($uniqueValues[$i] == $uniqueValues[$i-1] + 1) {
-				$straightLength++;
-				if ($straightLength >= 5) {
-					$straightCards = array_slice($uniqueValues, $i-4, 5);
-					rsort($straightCards);
-				}
-			} else {
-				$straightLength = 1;
+		$isWheel = false;
+		$isNut = false;
+
+		for ($i = 0; $i <= count($uniqueValues) - 5; $i++) {
+			if ($uniqueValues[$i] - $uniqueValues[$i+4] == 4) {
+				$straightFound = true;
+				$straightCards = array_slice($uniqueValues, $i, 5);
+				$isWheel = ($straightCards[4] == 1); // A-2-3-4-5
+				$isNut = ($straightCards[0] == 14 && $straightCards[1] == 13); // A-K-Q-J-T
+				break;
 			}
 		}
 
-		if (empty($straightCards)) return null;
+		// 2. Если стрит не найден - проверяем потенциал для дро
+		if (!$straightFound) {
+			$danger = 'low';
+			$drawType = 'none';
 
-		$nutStraight = $straightCards[0] == 14;
-		$isVulnerable = ($straightCards[0] < 12 && count(array_unique($straightCards)) == 5);
+			// Проверяем открытые стрит-дро (8 аутов)
+			for ($i = 0; $i <= count($uniqueValues) - 4; $i++) {
+				if ($uniqueValues[$i] - $uniqueValues[$i+3] == 3) {
+					$drawType = 'open_ended';
+					$danger = 'high';
+					break;
+				}
+			}
+
+			// Проверяем дырявые стрит-дро (4 аута)
+			if ($drawType == 'none') {
+				for ($i = 0; $i <= count($uniqueValues) - 4; $i++) {
+					if ($uniqueValues[$i] - $uniqueValues[$i+3] == 4) {
+						$drawType = 'gutshot';
+						$danger = 'medium';
+						break;
+					}
+				}
+			}
+
+			return [
+				'strength' => 'no_straight',
+				'danger' => $danger,
+				'draw_type' => $drawType
+			];
+		}
+
+		// 3. Анализ положения героя в стрите
+		$heroValues = array_column($holeCards, 'value');
+		$heroInStraight = false;
+		$heroHasTop = false;
+		$heroCardsInStraight = 0;
+
+		foreach ($straightCards as $value) {
+			if (in_array($value, $heroValues)) {
+				$heroInStraight = true;
+				$heroCardsInStraight++;
+				if ($value == ($isWheel ? 5 : max($straightCards))) {
+					$heroHasTop = true;
+				}
+			}
+		}
+
+		// 4. Оценка опасности стрита
+		$topValue = $isWheel ? 5 : max($straightCards);
+		$danger = 'medium';
+		$dangerReason = 'default';
+		$nutStatus = 'medium';
+
+		// Специальные случаи
+		if ($isNut) {
+			$nutStatus = 'nut';
+			if ($heroHasTop) {
+				$danger = 'none';
+				$dangerReason = 'absolute_nuts';
+			} else {
+				$danger = 'high';
+				$dangerReason = 'nut_straight_without_top';
+			}
+		}
+		elseif ($isWheel) {
+			$nutStatus = 'weak';
+			$danger = 'high';
+			$dangerReason = 'wheel_vulnerable';
+		}
+		else {
+			// Проверяем возможные более высокие стриты
+			$higherStraightPossible = false;
+			$boardValues = array_column($boardCards, 'value');
+			$maxBoardValue = max($boardValues);
+
+			if ($topValue < 14 && $maxBoardValue > $topValue) {
+				$higherStraightPossible = true;
+			}
+
+			// Градация опасности для обычных стритов
+			if ($heroHasTop) {
+				$nutStatus = 'strong';
+				if ($higherStraightPossible) {
+					$danger = 'medium';
+					$dangerReason = 'top_card_but_higher_possible';
+				} else {
+					$danger = 'low';
+					$dangerReason = 'top_card_no_higher_straight';
+				}
+			} else {
+				if ($higherStraightPossible) {
+					$danger = 'very_high';
+					$dangerReason = 'vulnerable_to_higher_straight';
+				} elseif ($topValue >= 10) { // Q-J-T-9-8 и выше
+					$danger = 'medium';
+					$dangerReason = 'medium_straight_position';
+				} else { // 9-8-7-6-5 и ниже
+					$danger = 'high';
+					$dangerReason = 'low_straight_vulnerable';
+				}
+			}
+		}
 
 		return [
 			'strength' => 'straight',
-			'description' => 'Straight ('.implode('-', $straightCards).')',
-			'combination' => [],
-			'kickers' => [],
-			'nut_status' => $nutStraight ? 'nut_straight' : ($isVulnerable ? 'medium' : 'strong')
+			'cards' => $straightCards,
+			'hero_in_straight' => $heroInStraight,
+			'hero_has_top' => $heroHasTop,
+			'hero_cards_count' => $heroCardsInStraight,
+			'danger' => $danger,
+			'danger_reason' => $dangerReason,
+			'nut_status' => $nutStatus,
+			'is_wheel' => $isWheel,
+			'is_nut' => $isNut
 		];
 	}
 

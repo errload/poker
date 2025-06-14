@@ -784,46 +784,138 @@ class HandEvaluatorTest extends TestCase
 	 * Тестирует метод checkStraight()
 	 * Проверяет определение стрита
 	 */
+	private function callCheckStraight(array $heroCards, array $boardCards): ?array
+	{
+		$reflector = new \ReflectionClass(HandEvaluator::class);
+		$method = $reflector->getMethod('checkStraight');
+		$method->setAccessible(true);
+		return $method->invokeArgs(null, [$heroCards, $boardCards, $boardCards]);
+	}
+
 	public function testCheckStraight()
 	{
-		// Обычный стрит
-		$straightCards = [
-			['rank' => 'T', 'suit' => 'h', 'value' => 10, 'full' => 'Th'],
-			['rank' => '9', 'suit' => 'd', 'value' => 9, 'full' => '9d'],
-			['rank' => '8', 'suit' => 'c', 'value' => 8, 'full' => '8c'],
-			['rank' => '7', 'suit' => 's', 'value' => 7, 'full' => '7s'],
-			['rank' => '6', 'suit' => 'h', 'value' => 6, 'full' => '6h'],
-			['rank' => '2', 'suit' => 'd', 'value' => 2, 'full' => '2d'],
-			['rank' => '3', 'suit' => 'c', 'value' => 3, 'full' => '3c']
+		// Натс-стрит (A-K-Q-J-T) - абсолютная сила
+		$heroCards = [['rank' => 'A', 'value' => 14], ['rank' => 'K', 'value' => 13]];
+		$boardCards = [
+			['rank' => 'Q', 'value' => 12],
+			['rank' => 'J', 'value' => 11],
+			['rank' => 'T', 'value' => 10],
+			['rank' => '2', 'value' => 2] // 4-я карта борда
 		];
-		$values = array_column($straightCards, 'value');
-		$result = HandEvaluator::checkStraight($straightCards, $values);
-		$this->assertNotNull($result);
+		$result = $this->callCheckStraight($heroCards, $boardCards);
 		$this->assertEquals('straight', $result['strength']);
+		$this->assertEquals('none', $result['danger'], "Натс-стрит не может быть перебит");
 
-		// Стрит от туза (A-2-3-4-5)
-		$wheelCards = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
-			['rank' => '2', 'suit' => 'd', 'value' => 2, 'full' => '2d'],
-			['rank' => '3', 'suit' => 'c', 'value' => 3, 'full' => '3c'],
-			['rank' => '4', 'suit' => 's', 'value' => 4, 'full' => '4s'],
-			['rank' => '5', 'suit' => 'h', 'value' => 5, 'full' => '5h']
+		// Общий стрит до туза (A-K-Q-J-T), но у героя карты ниже - опасности нет
+		$heroCards = [['rank' => '3', 'value' => 3], ['rank' => '2', 'value' => 2]];
+		$boardCards = [
+			['rank' => 'A', 'value' => 14],
+			['rank' => 'K', 'value' => 13],
+			['rank' => 'Q', 'value' => 12],
+			['rank' => 'J', 'value' => 11],
+			['rank' => 'T', 'value' => 10]
 		];
-		$values = array_column($wheelCards, 'value');
-		$result = HandEvaluator::checkStraight($wheelCards, $values);
-		$this->assertNotNull($result);
+		$result = $this->callCheckStraight($heroCards, $boardCards);
+		$this->assertEquals('straight', $result['strength']);
+		$this->assertEquals('none', $result['danger'], "Общий стрит до туза - опасности нет, даже с низкими картами героя");
 
-		// Нет стрита
-		$noStraightCards = [
-			['rank' => 'A', 'suit' => 'h', 'value' => 14, 'full' => 'Ah'],
-			['rank' => 'K', 'suit' => 'd', 'value' => 13, 'full' => 'Kd'],
-			['rank' => 'Q', 'suit' => 'c', 'value' => 12, 'full' => 'Qc'],
-			['rank' => 'J', 'suit' => 's', 'value' => 11, 'full' => 'Js'],
-			['rank' => '9', 'suit' => 'h', 'value' => 9, 'full' => '9h']
+		// Общий стрит не до туза (K-Q-J-T-9), у героя карты ниже - средняя опасность
+		$heroCards = [['rank' => '3', 'value' => 3], ['rank' => '2', 'value' => 2]];
+		$boardCards = [
+			['rank' => 'K', 'value' => 13],
+			['rank' => 'Q', 'value' => 12],
+			['rank' => 'J', 'value' => 11],
+			['rank' => 'T', 'value' => 10],
+			['rank' => '9', 'value' => 9]
 		];
-		$values = array_column($noStraightCards, 'value');
-		$result = HandEvaluator::checkStraight($noStraightCards, $values);
-		$this->assertNull($result);
+		$result = $this->callCheckStraight($heroCards, $boardCards);
+		$this->assertEquals('straight', $result['strength']);
+		$this->assertEquals('medium', $result['danger'], "Общий стрит не может дать кому то выше - средняя опасность");
+
+		// Колесо (A-2-3-4-5) - средняя уязвимость (может быть перебит стритом от 6)
+		$heroCards = [['rank' => 'A', 'value' => 14], ['rank' => '5', 'value' => 5]];
+		$boardCards = [
+			['rank' => '2', 'value' => 2],
+			['rank' => '3', 'value' => 3],
+			['rank' => '4', 'value' => 4],
+			['rank' => 'K', 'value' => 13] // 4-я карта борда
+		];
+		$result = $this->callCheckStraight($heroCards, $boardCards);
+		$this->assertEquals('straight', $result['strength']);
+		$this->assertEquals('medium', $result['danger'], "Колесо уязвимо для стритов от 6");
+
+		// Стрит от короля (K-Q-J-T-9) - минимальная опасность
+		$heroCards = [['rank' => 'K', 'value' => 13], ['rank' => 'Q', 'value' => 12]];
+		$boardCards = [
+			['rank' => 'J', 'value' => 11],
+			['rank' => 'T', 'value' => 10],
+			['rank' => '9', 'value' => 9],
+			['rank' => '2', 'value' => 2] // 4-я карта борда
+		];
+		$result = $this->callCheckStraight($heroCards, $boardCards);
+		$this->assertEquals('straight', $result['strength']);
+		$this->assertEquals('none', $result['danger'], "Высокий стрит неуязвим");
+
+		// Низкий стрит (7-6-5-4-3) - средняя уязвимость
+		$heroCards = [['rank' => '7', 'value' => 7], ['rank' => '3', 'value' => 3]];
+		$boardCards = [
+			['rank' => '6', 'value' => 6],
+			['rank' => '5', 'value' => 5],
+			['rank' => '4', 'value' => 4],
+			['rank' => 'K', 'value' => 13] // 4-я карта борда
+		];
+		$result = $this->callCheckStraight($heroCards, $boardCards);
+		$this->assertEquals('straight', $result['strength']);
+		$this->assertEquals('medium', $result['danger'], "Средний стрит может быть перебит");
+
+		// Стрит с одной картой героя - средняя опасность
+		$heroCards = [['rank' => '8', 'value' => 8], ['rank' => '2', 'value' => 2]];
+		$boardCards = [
+			['rank' => '7', 'value' => 7],
+			['rank' => '6', 'value' => 6],
+			['rank' => '5', 'value' => 5],
+			['rank' => '4', 'value' => 4] // 4-я карта борда
+		];
+		$result = $this->callCheckStraight($heroCards, $boardCards);
+		$this->assertEquals('straight', $result['strength']);
+		$this->assertEquals('medium', $result['danger'], "Стрит с одной картой героя уязвим");
+		$this->assertEquals(1, $result['hero_cards_count']);
+
+		// Стрит с одной картой героя - высокая опасность
+		$heroCards = [['rank' => '3', 'value' => 3], ['rank' => '2', 'value' => 2]];
+		$boardCards = [
+			['rank' => '7', 'value' => 7],
+			['rank' => '6', 'value' => 6],
+			['rank' => '5', 'value' => 5],
+			['rank' => '4', 'value' => 4] // 4-я карта борда
+		];
+		$result = $this->callCheckStraight($heroCards, $boardCards);
+		$this->assertEquals('straight', $result['strength']);
+		$this->assertEquals('high', $result['danger'], "Стрит с одной картой героя уязвим");
+		$this->assertEquals(1, $result['hero_cards_count']);
+
+		// Уязвимый стрит с возможным перебитием (Q-J-T-9-8 при наличии K на борде)
+		$heroCards = [['rank' => 'Q', 'value' => 12], ['rank' => '8', 'value' => 8]];
+		$boardCards = [
+			['rank' => 'J', 'value' => 11],
+			['rank' => 'T', 'value' => 10],
+			['rank' => '9', 'value' => 9],
+			['rank' => 'K', 'value' => 13] // 4-я карта борда (может дать более высокий стрит)
+		];
+		$result = $this->callCheckStraight($heroCards, $boardCards);
+		$this->assertEquals('straight', $result['strength']);
+		$this->assertEquals('medium', $result['danger'], "Стрит может быть перебит более высоким");
+
+		// Нет стрита вообще - опасность зависит от потенциала
+		$heroCards = [['rank' => 'A', 'value' => 14], ['rank' => 'K', 'value' => 13]];
+		$boardCards = [
+			['rank' => 'Q', 'value' => 12],
+			['rank' => '2', 'value' => 2],
+			['rank' => '3', 'value' => 3]
+		];
+		$result = $this->callCheckStraight($heroCards, $boardCards);
+		$this->assertEquals('no_straight', $result['strength']);
+		$this->assertEquals('low', $result['danger'], "Нет стрита и слабый потенциал - низкая опасность");
 	}
 
 	/**
